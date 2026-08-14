@@ -1,0 +1,16 @@
+services:
+  deal-scout:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+      HOST: 0.0.0.0
+      PORT: "3000"
+    volumes:
+      - deal-scout-data:/app/data
+
+volumes:
+  deal-scout-data:

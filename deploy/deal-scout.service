@@ -1,0 +1,15 @@
+[Unit]
+Description=Deal Scout
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/deal-scout
+EnvironmentFile=/opt/deal-scout/.env
+Environment=HOST=0.0.0.0
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

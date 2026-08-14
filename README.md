@@ -43,30 +43,65 @@ This is a website you install like an app. It is not in the App Store / Play Sto
 
 After that it has an icon and opens full-screen, like a normal app.
 
-You still need the VPS running. A home-screen icon is a shortcut to that live site.
+You still need a host that stays online. A home-screen icon is a shortcut to that live site.
 
-## Deploy on your VPS
+## Deploy on DigitalOcean
+
+Your CRM Droplet is the right DigitalOcean product. **Do not use App Platform** for this app: its disk is wiped on every deploy, and the SQLite deal list would disappear.
+
+On the Droplet (Ubuntu), as root:
 
 ```bash
-git clone <this-repo>
-cd deal-scout
+apt-get update
+apt-get install -y git nginx
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt-get install -y nodejs
+
+git clone https://github.com/deleondiego9/deal-scout.git /opt/deal-scout
+cd /opt/deal-scout
 cp .env.example .env
-# set a real API_KEY in .env
-npm install
-npm start
+# edit .env and set a real API_KEY
+npm ci --omit=dev
+
+cp deploy/deal-scout.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now deal-scout
 ```
 
-Scan every 6 hours with cron:
+If you already use Docker on the Droplet:
+
+```bash
+git clone https://github.com/deleondiego9/deal-scout.git /opt/deal-scout
+cd /opt/deal-scout
+cp .env.example .env
+# set API_KEY in .env
+docker compose up -d --build
+```
+
+Then put HTTPS in front. Copy `deploy/nginx.conf.example` to `/etc/nginx/sites-available/deal-scout`, change `deals.example.com` to your subdomain, enable the site, and run Certbot:
+
+```bash
+ln -s /etc/nginx/sites-available/deal-scout /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+apt-get install -y certbot python3-certbot-nginx
+certbot --nginx -d deals.yourdomain.com
+```
+
+Point that subdomain’s DNS A record at the Droplet in DigitalOcean Networking → Domains.
+
+Scan every 6 hours:
 
 ```cron
 0 */6 * * * cd /opt/deal-scout && /usr/bin/npm run scan >> /var/log/deal-scout-scan.log 2>&1
 ```
 
-Or use the included `Dockerfile`.
+With Docker, use:
 
-Set `API_KEY` in production. The UI has an API key field; paste the same value so **Scan now** and agent posts are accepted.
+```cron
+0 */6 * * * docker compose -f /opt/deal-scout/docker-compose.yml exec -T deal-scout node scripts/scan.js >> /var/log/deal-scout-scan.log 2>&1
+```
 
-Point a subdomain at the VPS (for example `deals.yourdomain.com`) and put HTTPS in front with nginx or Caddy. Phones need HTTPS for the home-screen install to behave like an app.
+Open `https://deals.yourdomain.com` on your phone, then Add to Home Screen.
 
 ## Cursor agent ingest
 
