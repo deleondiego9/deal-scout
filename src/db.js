@@ -128,15 +128,27 @@ export function upsertDeal(db, input) {
   });
 
   if (existing) {
+    const sellerFinancing = Boolean(existing.sellerFinancing || input.sellerFinancing);
+    const realEstateIncluded = Boolean(existing.realEstateIncluded || input.realEstateIncluded);
+    const title =
+      input.title && input.title.length > (existing.title || "").length ? input.title : existing.title;
+    const description = existing.description || input.description || null;
+    const excerpt = existing.excerpt || input.excerpt || null;
+    const financingEvidence = [
+      ...new Set([...(existing.financingEvidence || []), ...(input.financingEvidence || [])]),
+    ];
+    const realEstateEvidence = [
+      ...new Set([...(existing.realEstateEvidence || []), ...(input.realEstateEvidence || [])]),
+    ];
     db.prepare(
       `UPDATE deals SET
         last_seen_at = ?,
-        title = COALESCE(?, title),
+        title = ?,
         price_text = COALESCE(?, price_text),
         price_amount = COALESCE(?, price_amount),
         location = COALESCE(?, location),
-        description = COALESCE(?, description),
-        excerpt = COALESCE(?, excerpt),
+        description = ?,
+        excerpt = ?,
         seller_financing = ?,
         real_estate_included = ?,
         qualified = ?,
@@ -146,21 +158,21 @@ export function upsertDeal(db, input) {
       WHERE id = ?`
     ).run(
       now,
-      input.title || null,
+      title,
       input.priceText || null,
       input.priceAmount ?? null,
       input.location || null,
-      input.description || null,
-      input.excerpt || null,
-      input.sellerFinancing ? 1 : 0,
-      input.realEstateIncluded ? 1 : 0,
-      input.qualified ? 1 : 0,
-      input.score ?? 0,
-      JSON.stringify(input.financingEvidence || []),
-      JSON.stringify(input.realEstateEvidence || []),
+      description,
+      excerpt,
+      sellerFinancing ? 1 : 0,
+      realEstateIncluded ? 1 : 0,
+      sellerFinancing && realEstateIncluded ? 1 : 0,
+      Math.max(existing.score || 0, input.score ?? 0),
+      JSON.stringify(financingEvidence),
+      JSON.stringify(realEstateEvidence),
       existing.id
     );
-    return { inserted: false, repeated: true, deal: findDealByUrl(db, existing.url) };
+    return { inserted: false, repeated: true, deal: getDeal(db, existing.id) };
   }
 
   const result = db.prepare(

@@ -33,14 +33,14 @@ describe("database dedupe", () => {
       origin: "scan",
     };
     const first = upsertDeal(db, payload);
-    const second = upsertDeal(db, { ...payload, title: "Car Wash Updated Title" });
+    const second = upsertDeal(db, { ...payload, title: "Short" });
     assert.equal(first.inserted, true);
     assert.equal(second.inserted, false);
     assert.equal(second.repeated, true);
     assert.equal(listDeals(db).length, 1);
     assert.equal(
       findDealByUrl(db, payload.canonicalUrl).title,
-      "Car Wash Updated Title"
+      "Established Car Wash + Real Estate"
     );
   });
 
@@ -55,5 +55,23 @@ describe("database dedupe", () => {
     assert.equal(first.inserted, true);
     assert.equal(second.repeated, true);
     assert.equal(first.deal.qualified, true);
+  });
+
+  it("does not unqualify a deal when a thinner duplicate is posted", () => {
+    const url =
+      "https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-included-some-seller-financing/2418402/";
+    ingestDeal(db, {
+      url,
+      title: "Italian Restaurant, Real Estate Included, Some Seller Financing",
+      description: "Lake County, FL: seller financing and real estate included.",
+    });
+    const again = ingestDeal(db, { url, title: "Italian Restaurant" });
+    assert.equal(again.repeated, true);
+    assert.equal(again.deal.qualified, true);
+    assert.equal(again.deal.sellerFinancing, true);
+    assert.equal(
+      again.deal.title,
+      "Italian Restaurant, Real Estate Included, Some Seller Financing"
+    );
   });
 });
