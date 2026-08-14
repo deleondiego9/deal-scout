@@ -71,6 +71,19 @@ describe("http api", () => {
     assert.deepEqual(deals.body.deals, []);
   });
 
+  it("serves the phone-install manifest and icons", async () => {
+    const manifestRes = await fetch(`${base}/manifest.json`);
+    const manifest = await manifestRes.json();
+    assert.equal(manifestRes.status, 200);
+    assert.equal(manifest.display, "standalone");
+    assert.ok(manifest.icons.length >= 2);
+    const icon = await fetch(`${base}/icons/icon-192.png`);
+    assert.equal(icon.status, 200);
+    assert.match(icon.headers.get("content-type") || "", /image\/png/);
+    const sw = await fetch(`${base}/sw.js`);
+    assert.equal(sw.status, 200);
+  });
+
   it("rejects ingest without an API key", async () => {
     const result = await req("/api/deals", {
       method: "POST",

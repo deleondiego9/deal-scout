@@ -31,6 +31,20 @@ Open [http://localhost:3000](http://localhost:3000). Click **Scan now**, or:
 npm run scan
 ```
 
+## Put it on your phone
+
+This is a website you install like an app. It is not in the App Store / Play Store. GitHub only holds the code.
+
+1. **Put it on your VPS** with a public HTTPS address (see below). Your phone cannot open `localhost` on the VPS.
+2. On your phone, open that URL in Safari (iPhone) or Chrome (Android).
+3. **Add to Home Screen**:
+   - iPhone: Share → **Add to Home Screen**
+   - Android: menu → **Install app** or **Add to Home Screen**
+
+After that it has an icon and opens full-screen, like a normal app.
+
+You still need the VPS running. A home-screen icon is a shortcut to that live site.
+
 ## Deploy on your VPS
 
 ```bash
@@ -51,6 +65,8 @@ Scan every 6 hours with cron:
 Or use the included `Dockerfile`.
 
 Set `API_KEY` in production. The UI has an API key field; paste the same value so **Scan now** and agent posts are accepted.
+
+Point a subdomain at the VPS (for example `deals.yourdomain.com`) and put HTTPS in front with nginx or Caddy. Phones need HTTPS for the home-screen install to behave like an app.
 
 ## Cursor agent ingest
 

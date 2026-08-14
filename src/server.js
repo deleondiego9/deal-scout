@@ -26,7 +26,15 @@ export function createApp(db, options = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "2mb" }));
-  app.use(express.static(publicDir));
+  app.use(
+    express.static(publicDir, {
+      setHeaders(res, filePath) {
+        if (filePath.endsWith("manifest.json")) {
+          res.setHeader("Content-Type", "application/manifest+json");
+        }
+      },
+    })
+  );
 
   let scanLock = null;
 

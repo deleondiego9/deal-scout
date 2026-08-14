@@ -156,3 +156,7 @@ dealsEl.addEventListener("click", async (event) => {
 refresh().catch((error) => {
   scanStatus.textContent = error.message;
 });
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
