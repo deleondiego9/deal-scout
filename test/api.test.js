@@ -1,0 +1,141 @@
+import { describe, it, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { openDb, listDeals } from "../src/db.js";
+import { createApp } from "../src/server.js";
+
+const fixtureHtml = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "ddg-search.html"),
+  "utf8"
+);
+
+function mockFetch(input) {
+  const url = String(input);
+  if (url.includes("duckduckgo.com")) {
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: async () => fixtureHtml,
+    });
+  }
+  return Promise.resolve({
+    ok: false,
+    status: 403,
+    text: async () => "Access Denied",
+  });
+}
+
+describe("http api", () => {
+  let dir;
+  let db;
+  let server;
+  let base;
+
+  before(async () => {
+    dir = mkdtempSync(join(tmpdir(), "deal-scout-api-"));
+    db = openDb(join(dir, "deals.sqlite"));
+    const app = createApp(db, {
+      apiKey: "test-key",
+      fetchImpl: mockFetch,
+      queries: ['site:bizbuysell.com "seller financing" "real estate included"'],
+      scanRequireBoth: true,
+      scanDelayMs: 0,
+      scanMaxResults: 10,
+    });
+    server = app.listen(0, "127.0.0.1");
+    await new Promise((resolve) => server.once("listening", resolve));
+    const address = server.address();
+    base = `http://127.0.0.1:${address.port}`;
+  });
+
+  after(() => {
+    server.close();
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function req(path, options = {}) {
+    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    const response = await fetch(`${base}${path}`, { ...options, headers });
+    const body = await response.json();
+    return { status: response.status, body };
+  }
+
+  it("serves health and empty deal list", async () => {
+    const health = await req("/api/health");
+    assert.equal(health.body.ok, true);
+    const deals = await req("/api/deals");
+    assert.deepEqual(deals.body.deals, []);
+  });
+
+  it("rejects ingest without an API key", async () => {
+    const result = await req("/api/deals", {
+      method: "POST",
+      body: JSON.stringify({ url: "https://www.bizbuysell.com/business-opportunity/x/123456/" }),
+    });
+    assert.equal(result.status, 401);
+  });
+
+  it("ingests a deal from an agent payload", async () => {
+    const result = await req("/api/deals", {
+      method: "POST",
+      headers: { "X-API-Key": "test-key" },
+      body: JSON.stringify({
+        url: "https://www.bizbuysell.com/business-opportunity/food-market/2541327/",
+        title: "Seller Financing | Food Market + Real Estate",
+        description: "Real estate included. Seller financing offered.",
+        location: "Austin, TX",
+      }),
+    });
+    assert.equal(result.status, 201);
+    assert.equal(result.body.inserted, true);
+    assert.equal(result.body.deal.qualified, true);
+  });
+
+  it("does not duplicate the same ingested URL", async () => {
+    const result = await req("/api/deals", {
+      method: "POST",
+      headers: { "X-API-Key": "test-key" },
+      body: JSON.stringify({
+        url: "https://www.bizbuysell.com/business-opportunity/food-market/2541327/",
+        title: "Seller Financing | Food Market + Real Estate",
+        description: "Real estate included. Seller financing offered.",
+      }),
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.repeated, true);
+  });
+
+  it("runs a scan against search fixtures and skips repeats on the second run", async () => {
+    const first = await req("/api/scan", {
+      method: "POST",
+      headers: { "X-API-Key": "test-key" },
+      body: "{}",
+    });
+    assert.equal(first.status, 200);
+    assert.ok(first.body.summary.dealsAdded >= 3);
+    const countAfterFirst = listDeals(db).length;
+
+    const second = await req("/api/scan", {
+      method: "POST",
+      headers: { "X-API-Key": "test-key" },
+      body: "{}",
+    });
+    assert.equal(second.body.summary.dealsAdded, 0);
+    assert.ok(second.body.summary.dealsSkipped >= 3);
+    assert.equal(listDeals(db).length, countAfterFirst);
+  });
+
+  it("updates deal status", async () => {
+    const deals = await req("/api/deals?status=all");
+    const id = deals.body.deals[0].id;
+    const patched = await req(`/api/deals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "saved" }),
+    });
+    assert.equal(patched.body.deal.status, "saved");
+  });
+});

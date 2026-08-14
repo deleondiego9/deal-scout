@@ -1,0 +1,94 @@
+import * as cheerio from "cheerio";
+import { classify, parseLocation, parsePrice } from "./classify.js";
+import { decodeEntities, sourceFromUrl } from "./urls.js";
+
+function jsonLdBlocks(html) {
+  const $ = cheerio.load(html);
+  const blocks = [];
+  $('script[type="application/ld+json"]').each((_, el) => {
+    const raw = $(el).text();
+    try {
+      const parsed = JSON.parse(raw);
+      blocks.push(parsed);
+    } catch {
+      // ignore broken JSON-LD
+    }
+  });
+  return blocks.flatMap((block) => (Array.isArray(block) ? block : [block]));
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return decodeEntities(value.trim());
+  }
+  return null;
+}
+
+export function extractFromHtml(html, url) {
+  const $ = cheerio.load(html || "");
+  const ld = jsonLdBlocks(html || "");
+  const offer = ld.find((item) => item["@type"] === "Offer" || item.price || item.priceCurrency);
+  const product = ld.find((item) =>
+    ["Product", "LocalBusiness", "Restaurant", "Store"].includes(item["@type"])
+  );
+
+  const title = firstText(
+    $('meta[property="og:title"]').attr("content"),
+    $("h1").first().text(),
+    $("title").text()
+  );
+
+  const description = firstText(
+    $('meta[property="og:description"]').attr("content"),
+    $('meta[name="description"]').attr("content"),
+    product?.description,
+    $("p").first().text()
+  );
+
+  const priceText = firstText(
+    offer?.price ? `$${offer.price}` : null,
+    $('[itemprop="price"]').first().text(),
+    html?.match(/Asking Price[^$]*(\$[\d,]+)/i)?.[1],
+    html?.match(/\$\s*[0-9]{1,3}(?:,[0-9]{3})+/)?.[0]
+  );
+
+  const location = firstText(
+    product?.address?.addressLocality
+      ? `${product.address.addressLocality}, ${product.address.addressRegion || ""}`.trim()
+      : null,
+    $('[itemprop="address"]').first().text(),
+    parseLocation(`${title}\n${description}`)
+  );
+
+  const visible = `${title || ""}\n${description || ""}\n${$("body").text().slice(0, 4000)}`;
+  const flags = classify(visible);
+  const priceAmount = parsePrice(priceText || visible);
+
+  return {
+    url,
+    source: sourceFromUrl(url),
+    title: title || "Untitled listing",
+    priceText,
+    priceAmount,
+    location: location || parseLocation(visible),
+    description: description || null,
+    excerpt: (description || visible).replace(/\s+/g, " ").trim().slice(0, 500),
+    ...flags,
+  };
+}
+
+export function extractFromSearchResult({ url, title, snippet }) {
+  const combined = `${decodeEntities(title || "")}\n${decodeEntities(snippet || "")}`;
+  const flags = classify(combined);
+  return {
+    url,
+    source: sourceFromUrl(url),
+    title: decodeEntities(title || "").replace(/\s+/g, " ").trim() || "Untitled listing",
+    priceText: combined.match(/\$\s*[0-9]{1,3}(?:,[0-9]{3})+/)?.[0] || null,
+    priceAmount: parsePrice(combined),
+    location: parseLocation(combined),
+    description: decodeEntities(snippet || "").replace(/\s+/g, " ").trim() || null,
+    excerpt: decodeEntities(snippet || "").replace(/\s+/g, " ").trim().slice(0, 500),
+    ...flags,
+  };
+}

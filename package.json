@@ -1,0 +1,20 @@
+{
+  "name": "deal-scout",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Find businesses for sale that include real estate and offer seller financing.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "scan": "node scripts/scan.js",
+    "test": "node --test --test-reporter=spec test/*.test.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "express": "^5.1.0"
+  }
+}

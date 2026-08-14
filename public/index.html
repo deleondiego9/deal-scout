@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Deal Scout</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Outfit:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <p class="eyebrow">Businesses for sale</p>
+        <h1>Deal Scout</h1>
+        <p class="lede">
+          Listings that include real estate and offer seller financing. Scans skip anything already seen.
+        </p>
+      </div>
+      <div class="actions">
+        <label class="key-label">
+          API key
+          <input id="api-key" type="password" autocomplete="off" placeholder="Needed if API_KEY is set" />
+        </label>
+        <button id="scan-btn" type="button">Scan now</button>
+        <p id="scan-status" class="muted"></p>
+      </div>
+    </header>
+
+    <section class="stats" id="stats"></section>
+
+    <section class="toolbar">
+      <input id="search" type="search" placeholder="Search title, city, or URL" />
+      <div class="chips" role="tablist">
+        <button class="chip active" data-status="new">New</button>
+        <button class="chip" data-status="saved">Saved</button>
+        <button class="chip" data-status="dismissed">Dismissed</button>
+        <button class="chip" data-status="all">All</button>
+      </div>
+    </section>
+
+    <main id="deals" class="grid"></main>
+    <p id="empty" class="empty hidden">
+      No deals yet. Run a scan, or have a Cursor agent POST listings to <code>/api/deals</code>.
+    </p>
+
+    <section class="help">
+      <h2>How this runs</h2>
+      <ol>
+        <li>This app searches public listing results for seller financing <em>and</em> real estate included.</li>
+        <li>Each listing URL is stored once. Later scans skip it instead of duplicating the card.</li>
+        <li>A Cursor agent can also post deals it finds. Same dedupe rules apply.</li>
+        <li>Schedule <code>npm run scan</code> on your VPS, or use the GitHub Action once this app is deployed.</li>
+      </ol>
+      <pre id="ingest-example"></pre>
+    </section>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
