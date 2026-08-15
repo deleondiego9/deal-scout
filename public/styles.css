@@ -194,13 +194,30 @@ button,
   flex-wrap: wrap;
 }
 
-.flag {
-  font-size: 0.72rem;
-  border-radius: 999px;
-  padding: 4px 8px;
-  background: #e8efe8;
-  color: var(--forest-dark);
-  font-weight: 600;
+.flag.called {
+  background: #efe4c8;
+  color: #6a4b12;
+}
+
+.notes {
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+  resize: vertical;
+  background: #fff;
+}
+
+.card.called {
+  opacity: 0.92;
+}
+
+.row button[data-called="1"] {
+  background: var(--forest);
+  color: #f7f3ea;
+  border-color: var(--forest);
 }
 
 .source {

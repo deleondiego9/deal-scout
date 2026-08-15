@@ -48,8 +48,8 @@ function renderStats(payload) {
   statsEl.innerHTML = [
     ["Qualified", s.qualified ?? 0],
     ["New", s.new ?? 0],
+    ["Called", s.called ?? 0],
     ["Saved", s.saved ?? 0],
-    ["Total", s.total ?? 0],
   ]
     .map(
       ([label, value]) =>
@@ -70,7 +70,7 @@ function renderDeals(deals) {
   emptyEl.classList.toggle("hidden", deals.length > 0);
   for (const deal of deals) {
     const card = document.createElement("article");
-    card.className = `card${deal.qualified ? " qualified" : ""}`;
+    card.className = `card${deal.qualified ? " qualified" : ""}${deal.called ? " called" : ""}`;
     card.innerHTML = `
       <div class="source">${deal.source || "Listing"} · ${deal.location || "Location n/a"}</div>
       <h3>${escapeHtml(deal.title)}</h3>
@@ -78,12 +78,18 @@ function renderDeals(deals) {
       <div class="flags">
         ${deal.sellerFinancing ? `<span class="flag">Seller financing</span>` : ""}
         ${deal.realEstateIncluded ? `<span class="flag">Real estate included</span>` : ""}
+        ${deal.called ? `<span class="flag called">Called${deal.calledAt ? " · " + new Date(deal.calledAt).toLocaleDateString() : ""}</span>` : ""}
       </div>
       <p class="excerpt">${escapeHtml(deal.excerpt || deal.description || "")}</p>
+      <label class="key-label">Notes
+        <textarea class="notes" data-notes-id="${deal.id}" placeholder="Who you spoke with, asking price, follow-up…">${escapeHtml(deal.notes || "")}</textarea>
+      </label>
       <div class="row">
         <a href="${deal.url}" target="_blank" rel="noreferrer">Open listing</a>
-        <button data-id="${deal.id}" data-status="saved">Save</button>
-        <button data-id="${deal.id}" data-status="dismissed">Dismiss</button>
+        <button type="button" data-id="${deal.id}" data-save-notes="1">Save notes</button>
+        <button type="button" data-id="${deal.id}" data-called="${deal.called ? "0" : "1"}">${deal.called ? "Unmark called" : "Mark called"}</button>
+        <button type="button" data-id="${deal.id}" data-status="saved">Save</button>
+        <button type="button" data-id="${deal.id}" data-status="dismissed">Dismiss</button>
       </div>
     `;
     dealsEl.appendChild(card);
@@ -146,9 +152,17 @@ searchEl.addEventListener("input", () => {
 dealsEl.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-id]");
   if (!button) return;
-  await api(`api/deals/${button.dataset.id}`, {
+  const id = button.dataset.id;
+  const body = {};
+  if (button.dataset.status) body.status = button.dataset.status;
+  if (button.dataset.called !== undefined) body.called = button.dataset.called === "1";
+  if (button.dataset.saveNotes) {
+    const notes = dealsEl.querySelector(`[data-notes-id="${id}"]`);
+    body.notes = notes ? notes.value : "";
+  }
+  await api(`api/deals/${id}`, {
     method: "PATCH",
-    body: JSON.stringify({ status: button.dataset.status }),
+    body: JSON.stringify(body),
   });
   await refresh();
 });

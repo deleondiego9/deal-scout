@@ -31,6 +31,9 @@ export function openDb(filePath) {
       financing_evidence TEXT,
       real_estate_evidence TEXT,
       status TEXT NOT NULL DEFAULT 'new',
+      notes TEXT,
+      called INTEGER NOT NULL DEFAULT 0,
+      called_at TEXT,
       origin TEXT NOT NULL DEFAULT 'scan',
       first_seen_at TEXT NOT NULL,
       last_seen_at TEXT NOT NULL
@@ -58,8 +61,20 @@ export function openDb(filePath) {
     CREATE INDEX IF NOT EXISTS idx_deals_status ON deals(status);
     CREATE INDEX IF NOT EXISTS idx_deals_qualified ON deals(qualified);
     CREATE INDEX IF NOT EXISTS idx_deals_fingerprint ON deals(fingerprint);
+    CREATE INDEX IF NOT EXISTS idx_deals_called ON deals(called);
   `);
+  migrateDealsTable(db);
   return db;
+}
+
+function migrateDealsTable(db) {
+  const cols = new Set(db.prepare("PRAGMA table_info(deals)").all().map((col) => col.name));
+  const add = (name, ddl) => {
+    if (!cols.has(name)) db.exec(`ALTER TABLE deals ADD COLUMN ${ddl}`);
+  };
+  add("notes", "notes TEXT");
+  add("called", "called INTEGER NOT NULL DEFAULT 0");
+  add("called_at", "called_at TEXT");
 }
 
 function rowToDeal(row) {
@@ -82,6 +97,9 @@ function rowToDeal(row) {
     financingEvidence: JSON.parse(row.financing_evidence || "[]"),
     realEstateEvidence: JSON.parse(row.real_estate_evidence || "[]"),
     status: row.status,
+    notes: row.notes || "",
+    called: Boolean(row.called),
+    calledAt: row.called_at,
     origin: row.origin,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
@@ -209,10 +227,15 @@ export function upsertDeal(db, input) {
   };
 }
 
-export function listDeals(db, { status, qualified, q } = {}) {
+export function listDeals(db, { status, qualified, q, called } = {}) {
   let sql = "SELECT * FROM deals WHERE 1=1";
   const params = [];
-  if (status && status !== "all") {
+  if (status === "called" || called === true || called === "1") {
+    sql += " AND called = 1";
+  } else if (status === "new") {
+    sql += " AND status = ? AND called = 0";
+    params.push("new");
+  } else if (status && status !== "all") {
     sql += " AND status = ?";
     params.push(status);
   }
@@ -220,11 +243,11 @@ export function listDeals(db, { status, qualified, q } = {}) {
     sql += " AND qualified = 1";
   }
   if (q) {
-    sql += " AND (title LIKE ? OR location LIKE ? OR description LIKE ? OR canonical_url LIKE ?)";
+    sql += " AND (title LIKE ? OR location LIKE ? OR description LIKE ? OR canonical_url LIKE ? OR IFNULL(notes,'') LIKE ?)";
     const like = `%${q}%`;
-    params.push(like, like, like, like);
+    params.push(like, like, like, like, like);
   }
-  sql += " ORDER BY qualified DESC, score DESC, last_seen_at DESC, id DESC";
+  sql += " ORDER BY called ASC, qualified DESC, score DESC, last_seen_at DESC, id DESC";
   return db.prepare(sql).all(...params).map(rowToDeal);
 }
 
@@ -232,11 +255,35 @@ export function getDeal(db, id) {
   return rowToDeal(db.prepare("SELECT * FROM deals WHERE id = ?").get(id));
 }
 
-export function updateDealStatus(db, id, status) {
-  const allowed = new Set(["new", "saved", "dismissed"]);
-  if (!allowed.has(status)) throw new Error("Invalid status");
-  db.prepare("UPDATE deals SET status = ? WHERE id = ?").run(status, id);
+export function updateDeal(db, id, patch = {}) {
+  const existing = getDeal(db, id);
+  if (!existing) return null;
+
+  let status = existing.status;
+  if (patch.status !== undefined) {
+    const allowed = new Set(["new", "saved", "dismissed"]);
+    if (!allowed.has(patch.status)) throw new Error("Invalid status");
+    status = patch.status;
+  }
+
+  let notes = existing.notes || "";
+  if (patch.notes !== undefined) notes = String(patch.notes);
+
+  let called = existing.called;
+  let calledAt = existing.calledAt;
+  if (patch.called !== undefined) {
+    called = Boolean(patch.called);
+    calledAt = called ? patch.calledAt || nowIso() : null;
+  }
+
+  db.prepare(
+    "UPDATE deals SET status = ?, notes = ?, called = ?, called_at = ? WHERE id = ?"
+  ).run(status, notes, called ? 1 : 0, calledAt, id);
   return getDeal(db, id);
+}
+
+export function updateDealStatus(db, id, status) {
+  return updateDeal(db, id, { status });
 }
 
 export function stats(db) {
@@ -245,7 +292,8 @@ export function stats(db) {
       COUNT(*) AS total,
       SUM(CASE WHEN qualified = 1 THEN 1 ELSE 0 END) AS qualified,
       SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) AS newCount,
-      SUM(CASE WHEN status = 'saved' THEN 1 ELSE 0 END) AS saved
+      SUM(CASE WHEN status = 'saved' THEN 1 ELSE 0 END) AS saved,
+      SUM(CASE WHEN called = 1 THEN 1 ELSE 0 END) AS called
     FROM deals
   `).get();
   return {
@@ -253,6 +301,7 @@ export function stats(db) {
     qualified: row.qualified || 0,
     new: row.newCount || 0,
     saved: row.saved || 0,
+    called: row.called || 0,
   };
 }
 

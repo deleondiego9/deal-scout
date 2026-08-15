@@ -151,4 +151,30 @@ describe("http api", () => {
     });
     assert.equal(patched.body.deal.status, "saved");
   });
+
+  it("saves notes and marks a deal as called", async () => {
+    const deals = await req("/api/deals?status=all");
+    const id = deals.body.deals[0].id;
+    const noted = await req(`/api/deals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: "Left voicemail with broker Jane" }),
+    });
+    assert.equal(noted.status, 200);
+    assert.equal(noted.body.deal.notes, "Left voicemail with broker Jane");
+    assert.equal(noted.body.deal.called, false);
+
+    const called = await req(`/api/deals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ called: true }),
+    });
+    assert.equal(called.body.deal.called, true);
+    assert.ok(called.body.deal.calledAt);
+    assert.equal(called.body.deal.notes, "Left voicemail with broker Jane");
+
+    const listed = await req("/api/deals?status=called");
+    assert.ok(listed.body.deals.some((deal) => deal.id === id));
+
+    const stats = await req("/api/stats");
+    assert.ok(stats.body.stats.called >= 1);
+  });
 });

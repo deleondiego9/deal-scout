@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openDb, upsertDeal, findDealByUrl, listDeals } from "../src/db.js";
+import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal } from "../src/db.js";
 import { ingestDeal } from "../src/scanner.js";
 
 let dir;
@@ -73,5 +73,30 @@ describe("database dedupe", () => {
       again.deal.title,
       "Italian Restaurant, Real Estate Included, Some Seller Financing"
     );
+  });
+
+  it("stores notes and called without losing them on a later scan upsert", () => {
+    const payload = {
+      canonicalUrl: "https://www.bizbuysell.com/business-opportunity/notes-test/2550001",
+      title: "Shop + Real Estate Seller Financing",
+      location: "Austin, TX",
+      priceAmount: 500_000,
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+      score: 100,
+    };
+    const created = upsertDeal(db, payload);
+    const updated = updateDeal(db, created.deal.id, {
+      notes: "Called owner. Will send P&L.",
+      called: true,
+    });
+    assert.equal(updated.called, true);
+    assert.equal(updated.notes, "Called owner. Will send P&L.");
+    const again = upsertDeal(db, payload);
+    assert.equal(again.deal.notes, "Called owner. Will send P&L.");
+    assert.equal(again.deal.called, true);
+    assert.equal(listDeals(db, { status: "called" }).length, 1);
+    assert.equal(listDeals(db, { status: "new" }).length, 0);
   });
 });

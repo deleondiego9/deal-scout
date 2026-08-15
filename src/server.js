@@ -8,7 +8,7 @@ import {
   latestScan,
   listDeals,
   stats,
-  updateDealStatus,
+  updateDeal,
 } from "./db.js";
 import { ingestDeal, runScan } from "./scanner.js";
 import { canonicalizeUrl } from "./urls.js";
@@ -69,6 +69,7 @@ export function createApp(db, options = {}) {
       status: req.query.status,
       qualified: req.query.qualified,
       q: req.query.q,
+      called: req.query.called,
     });
     res.json({ deals });
   });
@@ -81,7 +82,12 @@ export function createApp(db, options = {}) {
 
   app.patch("/api/deals/:id", (req, res) => {
     try {
-      const deal = updateDealStatus(db, Number(req.params.id), req.body?.status);
+      const body = req.body || {};
+      const deal = updateDeal(db, Number(req.params.id), {
+        status: body.status,
+        notes: body.notes,
+        called: body.called,
+      });
       if (!deal) return res.status(404).json({ error: "Not found" });
       res.json({ deal });
     } catch (error) {
