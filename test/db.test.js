@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal } from "../src/db.js";
 import { ingestDeal } from "../src/scanner.js";
 
@@ -98,5 +99,48 @@ describe("database dedupe", () => {
     assert.equal(again.deal.called, true);
     assert.equal(listDeals(db, { status: "called" }).length, 1);
     assert.equal(listDeals(db, { status: "new" }).length, 0);
+  });
+
+  it("migrates an existing database that lacks notes and called columns", () => {
+    const file = join(dir, "legacy.sqlite");
+    const legacy = new DatabaseSync(file);
+    legacy.exec(`
+      CREATE TABLE deals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        canonical_url TEXT NOT NULL UNIQUE,
+        fingerprint TEXT,
+        source TEXT,
+        title TEXT NOT NULL,
+        price_text TEXT,
+        price_amount INTEGER,
+        location TEXT,
+        description TEXT,
+        excerpt TEXT,
+        seller_financing INTEGER NOT NULL DEFAULT 0,
+        real_estate_included INTEGER NOT NULL DEFAULT 0,
+        qualified INTEGER NOT NULL DEFAULT 0,
+        score INTEGER NOT NULL DEFAULT 0,
+        financing_evidence TEXT,
+        real_estate_evidence TEXT,
+        status TEXT NOT NULL DEFAULT 'new',
+        origin TEXT NOT NULL DEFAULT 'scan',
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+      );
+    `);
+    legacy.prepare(
+      "INSERT INTO deals (canonical_url, title, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)"
+    ).run("https://example.com/listing/1", "Legacy listing", "2026-01-01", "2026-01-01");
+    legacy.close();
+
+    const migrated = openDb(file);
+    const deal = listDeals(migrated, { status: "all" })[0];
+    assert.equal(deal.title, "Legacy listing");
+    assert.equal(deal.notes, "");
+    assert.equal(deal.called, false);
+    const updated = updateDeal(migrated, deal.id, { notes: "hello", called: true });
+    assert.equal(updated.notes, "hello");
+    assert.equal(updated.called, true);
+    migrated.close();
   });
 });

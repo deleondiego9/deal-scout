@@ -61,9 +61,9 @@ export function openDb(filePath) {
     CREATE INDEX IF NOT EXISTS idx_deals_status ON deals(status);
     CREATE INDEX IF NOT EXISTS idx_deals_qualified ON deals(qualified);
     CREATE INDEX IF NOT EXISTS idx_deals_fingerprint ON deals(fingerprint);
-    CREATE INDEX IF NOT EXISTS idx_deals_called ON deals(called);
   `);
   migrateDealsTable(db);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_deals_called ON deals(called)");
   return db;
 }
 
