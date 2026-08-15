@@ -1,8 +1,10 @@
-const CACHE = "deal-scout-v1";
-const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.json", "/icons/icon-192.png"];
+const CACHE = "deal-scout-v2";
+const SHELL = ["./", "./styles.css", "./app.js", "./manifest.json", "./icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(SHELL.map((path) => new URL(path, self.registration.scope).href)))
+  );
   self.skipWaiting();
 });
 
@@ -17,7 +19,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname.includes("/api/")) return;
   if (event.request.method !== "GET") return;
   event.respondWith(
     fetch(event.request)
@@ -26,6 +28,8 @@ self.addEventListener("fetch", (event) => {
         caches.open(CACHE).then((cache) => cache.put(event.request, copy));
         return response;
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/")))
+      .catch(() =>
+        caches.match(event.request).then((cached) => cached || caches.match(new URL("./", self.registration.scope)))
+      )
   );
 });

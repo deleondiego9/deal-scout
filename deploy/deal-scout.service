@@ -8,7 +8,7 @@ WorkingDirectory=/opt/deal-scout
 EnvironmentFile=/opt/deal-scout/.env
 Environment=HOST=0.0.0.0
 ExecStart=/usr/bin/node src/index.js
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]

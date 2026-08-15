@@ -15,7 +15,7 @@ apiKeyEl.addEventListener("input", () => {
 let statusFilter = "new";
 let query = "";
 
-exampleEl.textContent = `curl -X POST ${location.origin}/api/deals \\
+exampleEl.textContent = `curl -X POST ${new URL("api/deals", location.href).href} \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: $API_KEY" \\
   -d '{"url":"https://example.com/listing/123","title":"Car wash + real estate","description":"Seller financing available. Real estate included."}'`;
@@ -104,8 +104,8 @@ async function refresh() {
   if (query) params.set("q", query);
   params.set("qualified", "1");
   const [{ deals }, statsPayload] = await Promise.all([
-    api(`/api/deals?${params}`),
-    api("/api/stats"),
+    api(`api/deals?${params}`),
+    api("api/stats"),
   ]);
   renderDeals(deals);
   renderStats(statsPayload);
@@ -115,7 +115,7 @@ scanBtn.addEventListener("click", async () => {
   scanBtn.disabled = true;
   scanStatus.textContent = "Scanning public listing search results…";
   try {
-    const result = await api("/api/scan", { method: "POST", body: "{}" });
+    const result = await api("api/scan", { method: "POST", body: "{}" });
     const s = result.summary || {};
     scanStatus.textContent = `Added ${s.dealsAdded || 0}, skipped ${s.dealsSkipped || 0}${s.error ? ` · ${s.error}` : ""}`;
     await refresh();
@@ -146,7 +146,7 @@ searchEl.addEventListener("input", () => {
 dealsEl.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-id]");
   if (!button) return;
-  await api(`/api/deals/${button.dataset.id}`, {
+  await api(`api/deals/${button.dataset.id}`, {
     method: "PATCH",
     body: JSON.stringify({ status: button.dataset.status }),
   });
@@ -158,5 +158,5 @@ refresh().catch((error) => {
 });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.register("sw.js").catch(() => {});
 }
