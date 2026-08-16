@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { canonicalizeUrl, decodeBingUrl, decodeDuckDuckGoUrl, isListingUrl, listingFingerprint, sourceFromUrl } from "../src/urls.js";
+import { canonicalizeUrl, decodeBingUrl, decodeDuckDuckGoUrl, isListingUrl, listingFingerprint, listingKey, sourceFromUrl } from "../src/urls.js";
 
 describe("urls", () => {
   it("unwraps Bing redirect links", () => {
@@ -26,6 +26,13 @@ describe("urls", () => {
       "https://WWW.BizBuySell.com/business-opportunity/car-wash/2512479/?utm_source=x&utm_medium=y";
     assert.equal(
       canonicalizeUrl(url),
+      "https://www.bizbuysell.com/business-opportunity/car-wash/2512479"
+    );
+  });
+
+  it("normalizes mobile hosts to www", () => {
+    assert.equal(
+      canonicalizeUrl("https://m.bizbuysell.com/business-opportunity/car-wash/2512479/"),
       "https://www.bizbuysell.com/business-opportunity/car-wash/2512479"
     );
   });
@@ -56,5 +63,15 @@ describe("urls", () => {
       listingFingerprint("Car Wash + Real Estate", "Pomeroy, OH", 1000000),
       listingFingerprint("car wash + real estate", "Pomeroy, OH", 1000000)
     );
+  });
+
+  it("treats the same marketplace listing ID as one key even when the slug changes", () => {
+    assert.equal(
+      listingKey(
+        "https://www.bizbuysell.com/business-opportunity/established-car-wash-real-estate/2512479/"
+      ),
+      listingKey("https://m.bizbuysell.com/business-opportunity/car-wash/2512479?utm_source=bing")
+    );
+    assert.equal(listingKey("https://www.bizbuysell.com/business-opportunity/car-wash/2512479"), "bizbuysell.com:2512479");
   });
 });

@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { listingFingerprint } from "./urls.js";
+import { listingFingerprint, listingKey } from "./urls.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -17,6 +17,7 @@ export function openDb(filePath) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       canonical_url TEXT NOT NULL UNIQUE,
       fingerprint TEXT,
+      listing_key TEXT,
       source TEXT,
       title TEXT NOT NULL,
       price_text TEXT,
@@ -42,6 +43,7 @@ export function openDb(filePath) {
     CREATE TABLE IF NOT EXISTS seen_listings (
       canonical_url TEXT PRIMARY KEY,
       fingerprint TEXT,
+      listing_key TEXT,
       first_seen_at TEXT NOT NULL,
       last_seen_at TEXT NOT NULL,
       last_status TEXT
@@ -63,12 +65,17 @@ export function openDb(filePath) {
     CREATE INDEX IF NOT EXISTS idx_deals_fingerprint ON deals(fingerprint);
   `);
   migrateDealsTable(db);
+  migrateListingKeys(db);
   db.exec("CREATE INDEX IF NOT EXISTS idx_deals_called ON deals(called)");
   return db;
 }
 
+function tableColumns(db, table) {
+  return new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((col) => col.name));
+}
+
 function migrateDealsTable(db) {
-  const cols = new Set(db.prepare("PRAGMA table_info(deals)").all().map((col) => col.name));
+  const cols = tableColumns(db, "deals");
   const add = (name, ddl) => {
     if (!cols.has(name)) db.exec(`ALTER TABLE deals ADD COLUMN ${ddl}`);
   };
@@ -77,12 +84,34 @@ function migrateDealsTable(db) {
   add("called_at", "called_at TEXT");
 }
 
+function migrateListingKeys(db) {
+  const dealCols = tableColumns(db, "deals");
+  if (!dealCols.has("listing_key")) db.exec("ALTER TABLE deals ADD COLUMN listing_key TEXT");
+  const seenCols = tableColumns(db, "seen_listings");
+  if (!seenCols.has("listing_key")) db.exec("ALTER TABLE seen_listings ADD COLUMN listing_key TEXT");
+
+  const dealUpdate = db.prepare("UPDATE deals SET listing_key = ? WHERE id = ?");
+  for (const row of db.prepare("SELECT id, canonical_url FROM deals WHERE listing_key IS NULL OR listing_key = ''").all()) {
+    dealUpdate.run(listingKey(row.canonical_url), row.id);
+  }
+  const seenUpdate = db.prepare("UPDATE seen_listings SET listing_key = ? WHERE canonical_url = ?");
+  for (const row of db
+    .prepare("SELECT canonical_url FROM seen_listings WHERE listing_key IS NULL OR listing_key = ''")
+    .all()) {
+    seenUpdate.run(listingKey(row.canonical_url), row.canonical_url);
+  }
+
+  db.exec("CREATE INDEX IF NOT EXISTS idx_deals_listing_key ON deals(listing_key)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_seen_listing_key ON seen_listings(listing_key)");
+}
+
 function rowToDeal(row) {
   if (!row) return null;
   return {
     id: row.id,
     url: row.canonical_url,
     fingerprint: row.fingerprint,
+    listingKey: row.listing_key,
     source: row.source,
     title: row.title,
     priceText: row.price_text,
@@ -106,18 +135,19 @@ function rowToDeal(row) {
   };
 }
 
-export function markSeen(db, { canonicalUrl, fingerprint, status }) {
+export function markSeen(db, { canonicalUrl, fingerprint, listingKey: key, status }) {
   const now = nowIso();
+  const listing_key = key || listingKey(canonicalUrl);
   const existing = db.prepare("SELECT canonical_url FROM seen_listings WHERE canonical_url = ?").get(canonicalUrl);
   if (existing) {
     db.prepare(
-      "UPDATE seen_listings SET last_seen_at = ?, fingerprint = COALESCE(?, fingerprint), last_status = COALESCE(?, last_status) WHERE canonical_url = ?"
-    ).run(now, fingerprint || null, status || null, canonicalUrl);
+      "UPDATE seen_listings SET last_seen_at = ?, fingerprint = COALESCE(?, fingerprint), listing_key = COALESCE(?, listing_key), last_status = COALESCE(?, last_status) WHERE canonical_url = ?"
+    ).run(now, fingerprint || null, listing_key || null, status || null, canonicalUrl);
     return { repeated: true };
   }
   db.prepare(
-    "INSERT INTO seen_listings (canonical_url, fingerprint, first_seen_at, last_seen_at, last_status) VALUES (?, ?, ?, ?, ?)"
-  ).run(canonicalUrl, fingerprint || null, now, now, status || null);
+    "INSERT INTO seen_listings (canonical_url, fingerprint, listing_key, first_seen_at, last_seen_at, last_status) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(canonicalUrl, fingerprint || null, listing_key || null, now, now, status || null);
   return { repeated: false };
 }
 
@@ -132,16 +162,25 @@ export function findDealByFingerprint(db, fingerprint) {
   return rowToDeal(db.prepare("SELECT * FROM deals WHERE fingerprint = ?").get(fingerprint));
 }
 
+export function findDealByListingKey(db, key) {
+  if (!key) return null;
+  return rowToDeal(db.prepare("SELECT * FROM deals WHERE listing_key = ?").get(key));
+}
+
 export function upsertDeal(db, input) {
   const now = nowIso();
   const fingerprint =
     input.fingerprint || listingFingerprint(input.title, input.location, input.priceAmount);
+  const key = input.listingKey || listingKey(input.canonicalUrl);
   const existing =
-    findDealByUrl(db, input.canonicalUrl) || findDealByFingerprint(db, fingerprint);
+    findDealByUrl(db, input.canonicalUrl) ||
+    findDealByListingKey(db, key) ||
+    findDealByFingerprint(db, fingerprint);
 
   markSeen(db, {
     canonicalUrl: input.canonicalUrl,
     fingerprint,
+    listingKey: key,
     status: existing ? "skipped" : "added",
   });
 
@@ -161,6 +200,7 @@ export function upsertDeal(db, input) {
     db.prepare(
       `UPDATE deals SET
         last_seen_at = ?,
+        listing_key = COALESCE(?, listing_key),
         title = ?,
         price_text = COALESCE(?, price_text),
         price_amount = COALESCE(?, price_amount),
@@ -176,6 +216,7 @@ export function upsertDeal(db, input) {
       WHERE id = ?`
     ).run(
       now,
+      key,
       title,
       input.priceText || null,
       input.priceAmount ?? null,
@@ -195,13 +236,14 @@ export function upsertDeal(db, input) {
 
   const result = db.prepare(
     `INSERT INTO deals (
-      canonical_url, fingerprint, source, title, price_text, price_amount, location,
+      canonical_url, fingerprint, listing_key, source, title, price_text, price_amount, location,
       description, excerpt, seller_financing, real_estate_included, qualified, score,
       financing_evidence, real_estate_evidence, status, origin, first_seen_at, last_seen_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)`
   ).run(
     input.canonicalUrl,
     fingerprint,
+    key,
     input.source || null,
     input.title,
     input.priceText || null,
@@ -340,6 +382,41 @@ export function latestScan(db) {
   };
 }
 
-export function hasSeen(db, canonicalUrl) {
-  return Boolean(db.prepare("SELECT canonical_url FROM seen_listings WHERE canonical_url = ?").get(canonicalUrl));
+export function hasSeen(db, canonicalUrl, extra = {}) {
+  if (!canonicalUrl) return false;
+  const fingerprint = typeof extra === "string" ? extra : extra.fingerprint;
+  const key = (typeof extra === "object" && extra?.listingKey) || listingKey(canonicalUrl);
+
+  if (db.prepare("SELECT 1 FROM seen_listings WHERE canonical_url = ?").get(canonicalUrl)) return true;
+  if (db.prepare("SELECT 1 FROM deals WHERE canonical_url = ?").get(canonicalUrl)) return true;
+  if (key) {
+    if (db.prepare("SELECT 1 FROM seen_listings WHERE listing_key = ?").get(key)) return true;
+    if (db.prepare("SELECT 1 FROM deals WHERE listing_key = ?").get(key)) return true;
+  }
+  if (fingerprint) {
+    const parts = String(fingerprint).split("|").filter(Boolean);
+    if (parts.length >= 2) {
+      if (db.prepare("SELECT 1 FROM seen_listings WHERE fingerprint = ?").get(fingerprint)) return true;
+      if (db.prepare("SELECT 1 FROM deals WHERE fingerprint = ?").get(fingerprint)) return true;
+    }
+  }
+  return false;
+}
+
+export function recordSkip(db, { canonicalUrl, fingerprint, listingKey: key } = {}) {
+  const listing_key = key || listingKey(canonicalUrl);
+  markSeen(db, {
+    canonicalUrl,
+    fingerprint,
+    listingKey: listing_key,
+    status: "skipped",
+  });
+  const existing =
+    findDealByUrl(db, canonicalUrl) ||
+    findDealByListingKey(db, listing_key) ||
+    findDealByFingerprint(db, fingerprint);
+  if (existing) {
+    db.prepare("UPDATE deals SET last_seen_at = ? WHERE id = ?").run(nowIso(), existing.id);
+  }
+  return existing;
 }

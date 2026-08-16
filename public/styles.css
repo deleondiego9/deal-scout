@@ -194,9 +194,29 @@ button,
   flex-wrap: wrap;
 }
 
+.flag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #ece4d4;
+  color: var(--forest-dark);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .flag.called {
   background: #efe4c8;
   color: #6a4b12;
+}
+
+.flag.already {
+  background: #e4e0d8;
+  color: #5c564c;
+}
+
+.flag.fresh {
+  background: #d7eadc;
+  color: var(--forest-dark);
 }
 
 .notes {

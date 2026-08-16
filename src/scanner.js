@@ -1,7 +1,7 @@
 import { extractFromHtml, extractFromSearchResult } from "./extract.js";
 import { collectListingResults, DEFAULT_QUERIES } from "./search.js";
-import { canonicalizeUrl, listingFingerprint } from "./urls.js";
-import { finishScan, hasSeen, markSeen, startScan, upsertDeal } from "./db.js";
+import { canonicalizeUrl, listingFingerprint, listingKey } from "./urls.js";
+import { finishScan, hasSeen, markSeen, recordSkip, startScan, upsertDeal } from "./db.js";
 
 const DEFAULT_HEADERS = {
   "User-Agent":
@@ -60,7 +60,9 @@ export async function runScan(db, options = {}) {
 
     for (const result of sliced) {
       const canonicalUrl = canonicalizeUrl(result.url);
-      if (hasSeen(db, canonicalUrl)) {
+      const key = listingKey(canonicalUrl);
+      if (hasSeen(db, canonicalUrl, { listingKey: key })) {
+        recordSkip(db, { canonicalUrl, listingKey: key });
         summary.dealsSkipped += 1;
         continue;
       }
@@ -71,14 +73,22 @@ export async function runScan(db, options = {}) {
         if (delayMs) await sleep(delayMs);
       }
 
+      const fingerprint = listingFingerprint(
+        extracted.title,
+        extracted.location,
+        extracted.priceAmount
+      );
+      if (hasSeen(db, canonicalUrl, { fingerprint, listingKey: key })) {
+        recordSkip(db, { canonicalUrl, fingerprint, listingKey: key });
+        summary.dealsSkipped += 1;
+        continue;
+      }
+
       if (requireBoth && !extracted.qualified) {
         markSeen(db, {
           canonicalUrl,
-          fingerprint: listingFingerprint(
-            extracted.title,
-            extracted.location,
-            extracted.priceAmount
-          ),
+          fingerprint,
+          listingKey: key,
           status: "skipped_unqualified",
         });
         summary.dealsSkipped += 1;

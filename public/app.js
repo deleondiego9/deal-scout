@@ -14,6 +14,7 @@ apiKeyEl.addEventListener("input", () => {
 
 let statusFilter = "new";
 let query = "";
+let scanNotice = null;
 
 exampleEl.textContent = `curl -X POST ${new URL("api/deals", location.href).href} \\
   -H "Content-Type: application/json" \\
@@ -42,6 +43,30 @@ async function api(path, options = {}) {
   return body;
 }
 
+function scanSummaryText(last) {
+  if (scanNotice) return scanNotice;
+  if (last?.startedAt && !last.finishedAt) return "Scan running…";
+  if (!last?.finishedAt) return "No scans yet";
+  const when = new Date(last.finishedAt).toLocaleString();
+  const added = last.dealsAdded ?? 0;
+  const skipped = last.dealsSkipped ?? 0;
+  if (added === 0) {
+    return `Last scan ${when}: no new listings · ${skipped} already in your list`;
+  }
+  return `Last scan ${when}: ${added} new · ${skipped} already in your list`;
+}
+
+function seenBadge(deal, lastScan) {
+  if (deal.status !== "new" || !lastScan?.startedAt) return "";
+  const scanStart = Date.parse(lastScan.startedAt);
+  const firstSeen = Date.parse(deal.firstSeenAt);
+  if (!Number.isFinite(scanStart) || !Number.isFinite(firstSeen)) return "";
+  if (firstSeen >= scanStart - 1000) {
+    return `<span class="flag fresh">Just found</span>`;
+  }
+  return `<span class="flag already">Already in list</span>`;
+}
+
 function renderStats(payload) {
   const s = payload.stats || {};
   const last = payload.lastScan;
@@ -56,16 +81,10 @@ function renderStats(payload) {
         `<div class="stat"><span>${label}</span><b>${value}</b></div>`
     )
     .join("");
-  if (last?.finishedAt) {
-    scanStatus.textContent = `Last scan: ${new Date(last.finishedAt).toLocaleString()} · added ${last.dealsAdded} · skipped ${last.dealsSkipped}`;
-  } else if (last?.startedAt && !last.finishedAt) {
-    scanStatus.textContent = "Scan running…";
-  } else {
-    scanStatus.textContent = "No scans yet";
-  }
+  scanStatus.textContent = scanSummaryText(last);
 }
 
-function renderDeals(deals) {
+function renderDeals(deals, lastScan) {
   dealsEl.innerHTML = "";
   emptyEl.classList.toggle("hidden", deals.length > 0);
   for (const deal of deals) {
@@ -76,6 +95,7 @@ function renderDeals(deals) {
       <h3>${escapeHtml(deal.title)}</h3>
       <div class="price">${money(deal.priceAmount, deal.priceText)}</div>
       <div class="flags">
+        ${seenBadge(deal, lastScan)}
         ${deal.sellerFinancing ? `<span class="flag">Seller financing</span>` : ""}
         ${deal.realEstateIncluded ? `<span class="flag">Real estate included</span>` : ""}
         ${deal.called ? `<span class="flag called">Called${deal.calledAt ? " · " + new Date(deal.calledAt).toLocaleDateString() : ""}</span>` : ""}
@@ -113,26 +133,28 @@ async function refresh() {
     api(`api/deals?${params}`),
     api("api/stats"),
   ]);
-  renderDeals(deals);
+  renderDeals(deals, statsPayload.lastScan);
   renderStats(statsPayload);
 }
 
 scanBtn.addEventListener("click", async () => {
   scanBtn.disabled = true;
+  scanNotice = null;
   scanStatus.textContent = "Scanning public listing search results…";
   try {
     const result = await api("api/scan", { method: "POST", body: "{}" });
     const s = result.summary || {};
     if (s.error) {
-      scanStatus.textContent = `Scan failed: ${s.error}`;
+      scanNotice = `Scan failed: ${s.error}`;
     } else if ((s.dealsAdded || 0) === 0) {
-      scanStatus.textContent = `Scan finished. No new listings this time (checked ${s.urlsFound || 0} results).`;
+      scanNotice = `No new listings. ${s.dealsSkipped || 0} already in your list — not added again.`;
     } else {
-      scanStatus.textContent = `Added ${s.dealsAdded}, skipped ${s.dealsSkipped || 0}.`;
+      scanNotice = `Added ${s.dealsAdded} new. ${s.dealsSkipped || 0} already in your list.`;
     }
     await refresh();
   } catch (error) {
     const message = error.message || "Scan failed";
+    scanNotice = null;
     scanStatus.textContent =
       message.includes("API key")
         ? "Paste the API key above, then tap Scan now."

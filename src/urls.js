@@ -61,10 +61,20 @@ export function decodeDuckDuckGoUrl(href = "") {
 
 export function hostnameOf(url) {
   try {
-    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+    return new URL(url).hostname.replace(/^(www|m)\./, "").toLowerCase();
   } catch {
     return "";
   }
+}
+
+function normalizeListingHostname(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  for (const allowed of LISTING_HOSTS) {
+    if (host === allowed || host === `www.${allowed}` || host === `m.${allowed}`) {
+      return `www.${allowed}`;
+    }
+  }
+  return host;
 }
 
 export function sourceFromUrl(url) {
@@ -90,7 +100,7 @@ export function canonicalizeUrl(url) {
   }
   const parsed = new URL(decoded);
   parsed.hash = "";
-  parsed.hostname = parsed.hostname.toLowerCase();
+  parsed.hostname = normalizeListingHostname(parsed.hostname);
   parsed.protocol = "https:";
   const drop = new Set([
     "utm_source",
@@ -132,6 +142,19 @@ export function isListingUrl(url) {
   if (/\/\d{5,}(?:\/|$)/.test(path)) return true;
   if (path.includes("/detail/")) return true;
   return false;
+}
+
+export function listingKey(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(canonicalizeUrl(url));
+    const host = parsed.hostname.replace(/^(www|m)\./, "").toLowerCase();
+    const match = parsed.pathname.match(/\/(\d{5,})(?:\/|$)/);
+    if (!match) return null;
+    return `${host}:${match[1]}`;
+  } catch {
+    return null;
+  }
 }
 
 export function listingFingerprint(title, location, priceAmount) {

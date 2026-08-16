@@ -60,7 +60,7 @@
       <h2>How this runs</h2>
       <ol>
         <li>This app searches public listing results for seller financing <em>and</em> real estate included.</li>
-        <li>Each listing URL is stored once. Later scans skip it instead of duplicating the card.</li>
+        <li>Each listing is stored once (same URL or same marketplace ID). Later scans skip it and mark the card “Already in list” instead of duplicating it.</li>
         <li>A Cursor agent can also post deals it finds. Same dedupe rules apply.</li>
         <li>Schedule <code>npm run scan</code> on your VPS, or use the GitHub Action once this app is deployed.</li>
         <li>Add notes on a listing and mark it <strong>Called</strong> after you talk to the seller.</li>

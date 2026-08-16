@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal } from "../src/db.js";
+import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal, hasSeen, recordSkip, getDeal } from "../src/db.js";
 import { ingestDeal } from "../src/scanner.js";
 
 let dir;
@@ -99,6 +99,50 @@ describe("database dedupe", () => {
     assert.equal(again.deal.called, true);
     assert.equal(listDeals(db, { status: "called" }).length, 1);
     assert.equal(listDeals(db, { status: "new" }).length, 0);
+  });
+
+  it("dedupes the same marketplace listing ID even when the URL slug changes", () => {
+    const first = upsertDeal(db, {
+      canonicalUrl: "https://www.bizbuysell.com/business-opportunity/established-car-wash/2512479",
+      title: "Established Car Wash + Real Estate",
+      location: "Pomeroy, OH",
+      priceAmount: 1_000_000,
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+      score: 100,
+    });
+    const second = upsertDeal(db, {
+      canonicalUrl: "https://www.bizbuysell.com/business-opportunity/car-wash-seller-financing/2512479",
+      title: "Car Wash Seller Financing",
+      location: "Pomeroy, OH",
+      priceAmount: 1_000_000,
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+      score: 80,
+    });
+    assert.equal(first.inserted, true);
+    assert.equal(second.inserted, false);
+    assert.equal(listDeals(db).length, 1);
+    assert.equal(hasSeen(db, "https://m.bizbuysell.com/business-opportunity/other-slug/2512479"), true);
+  });
+
+  it("bumps last_seen_at when a later scan skips an existing listing", async () => {
+    const created = upsertDeal(db, {
+      canonicalUrl: "https://www.bizbuysell.com/business-opportunity/shop/2432174",
+      title: "Auto Shop + Real Estate",
+      location: "Austin, TX",
+      priceAmount: 500_000,
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+    });
+    const before = created.deal.lastSeenAt;
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    recordSkip(db, { canonicalUrl: created.deal.url });
+    const after = getDeal(db, created.deal.id);
+    assert.ok(after.lastSeenAt > before);
   });
 
   it("migrates an existing database that lacks notes and called columns", () => {
