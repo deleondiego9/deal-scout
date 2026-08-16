@@ -57,6 +57,7 @@ export function openDb(filePath) {
       urls_found INTEGER DEFAULT 0,
       deals_added INTEGER DEFAULT 0,
       deals_skipped INTEGER DEFAULT 0,
+      deals_unqualified INTEGER DEFAULT 0,
       error TEXT
     );
 
@@ -66,6 +67,7 @@ export function openDb(filePath) {
   `);
   migrateDealsTable(db);
   migrateListingKeys(db);
+  migrateScansTable(db);
   db.exec("CREATE INDEX IF NOT EXISTS idx_deals_called ON deals(called)");
   return db;
 }
@@ -82,6 +84,13 @@ function migrateDealsTable(db) {
   add("notes", "notes TEXT");
   add("called", "called INTEGER NOT NULL DEFAULT 0");
   add("called_at", "called_at TEXT");
+}
+
+function migrateScansTable(db) {
+  const cols = tableColumns(db, "scans");
+  if (!cols.has("deals_unqualified")) {
+    db.exec("ALTER TABLE scans ADD COLUMN deals_unqualified INTEGER DEFAULT 0");
+  }
 }
 
 function migrateListingKeys(db) {
@@ -362,13 +371,14 @@ export function startScan(db) {
 
 export function finishScan(db, id, summary) {
   db.prepare(
-    `UPDATE scans SET finished_at = ?, queries_run = ?, urls_found = ?, deals_added = ?, deals_skipped = ?, error = ? WHERE id = ?`
+    `UPDATE scans SET finished_at = ?, queries_run = ?, urls_found = ?, deals_added = ?, deals_skipped = ?, deals_unqualified = ?, error = ? WHERE id = ?`
   ).run(
     nowIso(),
     summary.queriesRun ?? 0,
     summary.urlsFound ?? 0,
     summary.dealsAdded ?? 0,
     summary.dealsSkipped ?? 0,
+    summary.dealsUnqualified ?? 0,
     summary.error || null,
     id
   );
@@ -386,6 +396,7 @@ export function latestScan(db) {
     urlsFound: row.urls_found,
     dealsAdded: row.deals_added,
     dealsSkipped: row.deals_skipped,
+    dealsUnqualified: row.deals_unqualified || 0,
     error: row.error,
   };
 }

@@ -10,7 +10,7 @@ import {
   stats,
   updateDeal,
 } from "./db.js";
-import { ingestDeal, runScan } from "./scanner.js";
+import { ingestDeal, importScan, runScan } from "./scanner.js";
 import { canonicalizeUrl } from "./urls.js";
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
@@ -103,6 +103,21 @@ export function createApp(db, options = {}) {
         repeated: result.repeated,
         deal: result.deal,
       });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/scan/import", requireKey, (req, res) => {
+    try {
+      const listings = Array.isArray(req.body?.listings) ? req.body.listings : [];
+      const summary = importScan(db, listings, {
+        origin: req.body?.origin || "harvest",
+        queriesRun: Number(req.body?.queriesRun) || 0,
+        requireBoth: cfg.scanRequireBoth,
+        maxResults: cfg.scanMaxResults,
+      });
+      res.json({ summary, lastScan: latestScan(db) });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }

@@ -175,4 +175,24 @@ describe("http api", () => {
     const stats = await req("/api/stats");
     assert.ok(stats.body.stats.called >= 1);
   });
+
+  it("imports harvested listings with an API key", async () => {
+    const result = await req("/api/scan/import", {
+      method: "POST",
+      headers: { "X-API-Key": "test-key" },
+      body: JSON.stringify({
+        origin: "github-harvest",
+        listings: [
+          {
+            url: "https://www.bizbuysell.com/business-opportunity/spokane-auto-shop-for-sale-with-real-estate-seller-financing/2528518/",
+            title: "Spokane Auto Shop with Real Estate + Seller Financing",
+            snippet: "Seller financing available. Real estate included.",
+          },
+        ],
+      }),
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.summary.dealsAdded, 1);
+    assert.ok(listDeals(db).some((deal) => deal.url.includes("2528518")));
+  });
 });

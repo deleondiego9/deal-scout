@@ -29,7 +29,7 @@ export function config() {
     dataDir: process.env.DATA_DIR || "./data",
     apiKey: process.env.API_KEY || "",
     scanDelayMs: Number(process.env.SCAN_DELAY_MS || 800),
-    scanMaxResults: Number(process.env.SCAN_MAX_RESULTS || 24),
+    scanMaxResults: Number(process.env.SCAN_MAX_RESULTS || 80),
     scanRequireBoth: process.env.SCAN_REQUIRE_BOTH !== "0",
   };
 }

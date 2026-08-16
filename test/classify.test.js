@@ -47,6 +47,20 @@ describe("classify", () => {
   });
 });
 
+describe("classify uses listing URL slugs", () => {
+  it("reads seller-financing and real-estate-included from the path", async () => {
+    const { extractFromSearchResult } = await import("../src/extract.js");
+    const extracted = extractFromSearchResult({
+      url: "https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-included-some-seller-financing/2418402/",
+      title: "Italian restaurant",
+      snippet: "Lake County listing on BizBuySell",
+    });
+    assert.equal(extracted.qualified, true);
+    assert.equal(extracted.sellerFinancing, true);
+    assert.equal(extracted.realEstateIncluded, true);
+  });
+});
+
 describe("parsePrice", () => {
   it("parses comma-formatted dollars", () => {
     assert.equal(parsePrice("Offered at $1,000,000 for the business"), 1_000_000);

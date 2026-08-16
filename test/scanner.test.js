@@ -90,4 +90,34 @@ describe("scan finds new listings instead of blackholing short snippets", () => 
     assert.equal(second.dealsAdded, 0);
     assert.equal(listDeals(db).length, count);
   });
+
+  it("counts listings that do not mention both filters as unqualified, not skipped", async () => {
+    const html = `<!DOCTYPE html><html><body>
+<div class="result__body">
+  <a class="result__a" href="https://www.bizbuysell.com/business-opportunity/laundromat-real-estate-included/2530156/">Laundromat Real Estate Included</a>
+  <a class="result__snippet">Fully absentee laundromat. Real estate included. Asking $800,000.</a>
+</div>
+<div class="result__body">
+  <a class="result__a" href="https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-included-some-seller-financing/2418402/">Italian Restaurant</a>
+  <a class="result__snippet">Real estate included. Some seller financing. Lake County, FL.</a>
+</div>
+</body></html>`;
+    const fetchImpl = (input) => {
+      const url = String(input);
+      if (url.includes("duckduckgo")) {
+        return Promise.resolve({ ok: true, status: 200, text: async () => html });
+      }
+      return Promise.resolve({ ok: true, status: 200, text: async () => "<rss></rss>" });
+    };
+    const summary = await runScan(db, {
+      queries: ['site:bizbuysell.com "real estate included"'],
+      fetchImpl,
+      delayMs: 0,
+      maxResults: 10,
+      requireBoth: true,
+    });
+    assert.equal(summary.dealsAdded, 1);
+    assert.equal(summary.dealsUnqualified, 1);
+    assert.equal(listDeals(db).length, 1);
+  });
 });

@@ -77,8 +77,18 @@ export function extractFromHtml(html, url) {
   };
 }
 
+export function listingTextFromSearch({ url, title, snippet } = {}) {
+  let slug = "";
+  try {
+    slug = decodeURIComponent(new URL(url).pathname).replace(/[-/_]+/g, " ");
+  } catch {
+    slug = "";
+  }
+  return `${decodeEntities(title || "")}\n${decodeEntities(snippet || "")}\n${slug}`;
+}
+
 export function extractFromSearchResult({ url, title, snippet }) {
-  const combined = `${decodeEntities(title || "")}\n${decodeEntities(snippet || "")}`;
+  const combined = listingTextFromSearch({ url, title, snippet });
   const flags = classify(combined);
   return {
     url,

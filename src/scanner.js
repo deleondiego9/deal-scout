@@ -49,14 +49,83 @@ async function enrichFromListing(result, { fetchImpl, headers }) {
   }
 }
 
+export function ingestSearchListings(db, listings, options = {}) {
+  const {
+    requireBoth = true,
+    origin = "scan",
+    maxResults = 80,
+  } = options;
+
+  const summary = {
+    urlsFound: listings.length,
+    dealsAdded: 0,
+    dealsSkipped: 0,
+    dealsUnqualified: 0,
+    added: [],
+  };
+
+  const sliced = listings.slice(0, maxResults);
+  for (const result of sliced) {
+    if (!result?.url) {
+      summary.dealsUnqualified += 1;
+      continue;
+    }
+    let canonicalUrl;
+    try {
+      canonicalUrl = canonicalizeUrl(result.url);
+    } catch {
+      summary.dealsUnqualified += 1;
+      continue;
+    }
+    const key = listingKey(canonicalUrl);
+    if (existingDeal(db, canonicalUrl, key)) {
+      recordSkip(db, { canonicalUrl, listingKey: key });
+      summary.dealsSkipped += 1;
+      continue;
+    }
+
+    const extracted = extractFromSearchResult({ ...result, url: canonicalUrl });
+    const fingerprint = listingFingerprint(
+      extracted.title,
+      extracted.location,
+      extracted.priceAmount
+    );
+    if (existingDeal(db, canonicalUrl, key, fingerprint)) {
+      recordSkip(db, { canonicalUrl, fingerprint, listingKey: key });
+      summary.dealsSkipped += 1;
+      continue;
+    }
+
+    if (requireBoth && !extracted.qualified) {
+      summary.dealsUnqualified += 1;
+      continue;
+    }
+
+    const saved = upsertDeal(db, {
+      ...extracted,
+      canonicalUrl,
+      origin,
+    });
+    if (saved.inserted) {
+      summary.dealsAdded += 1;
+      summary.added.push(saved.deal);
+    } else {
+      summary.dealsSkipped += 1;
+    }
+  }
+
+  return summary;
+}
+
 export async function runScan(db, options = {}) {
   const {
     queries = DEFAULT_QUERIES,
     fetchImpl = fetch,
     delayMs = 800,
-    maxResults = 24,
+    maxResults = 80,
     requireBoth = true,
     enrich = false,
+    origin = "scan",
   } = options;
 
   const scanId = startScan(db);
@@ -65,57 +134,65 @@ export async function runScan(db, options = {}) {
     urlsFound: 0,
     dealsAdded: 0,
     dealsSkipped: 0,
+    dealsUnqualified: 0,
     error: null,
     added: [],
   };
 
   try {
-    const listings = await collectListingResults(queries, { fetchImpl });
+    const listings = await collectListingResults(queries, {
+      fetchImpl,
+      searchDelayMs: Math.min(delayMs || 0, 800),
+    });
     summary.urlsFound = listings.length;
-    const sliced = listings.slice(0, maxResults);
 
-    for (const result of sliced) {
-      const canonicalUrl = canonicalizeUrl(result.url);
-      const key = listingKey(canonicalUrl);
-      if (existingDeal(db, canonicalUrl, key)) {
-        recordSkip(db, { canonicalUrl, listingKey: key });
-        summary.dealsSkipped += 1;
-        continue;
-      }
-
-      let extracted = extractFromSearchResult({ ...result, url: canonicalUrl });
-      if (enrich) {
-        extracted = await enrichFromListing({ ...result, url: canonicalUrl }, { fetchImpl, headers: DEFAULT_HEADERS });
+    if (enrich) {
+      const sliced = listings.slice(0, maxResults);
+      for (const result of sliced) {
+        const canonicalUrl = canonicalizeUrl(result.url);
+        const key = listingKey(canonicalUrl);
+        if (existingDeal(db, canonicalUrl, key)) {
+          recordSkip(db, { canonicalUrl, listingKey: key });
+          summary.dealsSkipped += 1;
+          continue;
+        }
+        const extracted = await enrichFromListing(
+          { ...result, url: canonicalUrl },
+          { fetchImpl, headers: DEFAULT_HEADERS }
+        );
         if (delayMs) await sleep(delayMs);
+        const fingerprint = listingFingerprint(
+          extracted.title,
+          extracted.location,
+          extracted.priceAmount
+        );
+        if (existingDeal(db, canonicalUrl, key, fingerprint)) {
+          recordSkip(db, { canonicalUrl, fingerprint, listingKey: key });
+          summary.dealsSkipped += 1;
+          continue;
+        }
+        if (requireBoth && !extracted.qualified) {
+          summary.dealsUnqualified += 1;
+          continue;
+        }
+        const saved = upsertDeal(db, { ...extracted, canonicalUrl, origin });
+        if (saved.inserted) {
+          summary.dealsAdded += 1;
+          summary.added.push(saved.deal);
+        } else {
+          summary.dealsSkipped += 1;
+        }
       }
-
-      const fingerprint = listingFingerprint(
-        extracted.title,
-        extracted.location,
-        extracted.priceAmount
-      );
-      if (existingDeal(db, canonicalUrl, key, fingerprint)) {
-        recordSkip(db, { canonicalUrl, fingerprint, listingKey: key });
-        summary.dealsSkipped += 1;
-        continue;
-      }
-
-      if (requireBoth && !extracted.qualified) {
-        summary.dealsSkipped += 1;
-        continue;
-      }
-
-      const saved = upsertDeal(db, {
-        ...extracted,
-        canonicalUrl,
-        origin: "scan",
+    } else {
+      const ingested = ingestSearchListings(db, listings, {
+        requireBoth,
+        origin,
+        maxResults,
       });
-      if (saved.inserted) {
-        summary.dealsAdded += 1;
-        summary.added.push(saved.deal);
-      } else {
-        summary.dealsSkipped += 1;
-      }
+      summary.dealsAdded = ingested.dealsAdded;
+      summary.dealsSkipped = ingested.dealsSkipped;
+      summary.dealsUnqualified = ingested.dealsUnqualified;
+      summary.added = ingested.added;
     }
   } catch (error) {
     summary.error = error.message;
@@ -156,4 +233,20 @@ export function ingestDeal(db, payload) {
   if (payload.score !== undefined) merged.score = payload.score;
 
   return upsertDeal(db, merged);
+}
+
+export function importScan(db, listings, options = {}) {
+  const scanId = startScan(db);
+  const ingested = ingestSearchListings(db, listings, options);
+  const summary = {
+    queriesRun: options.queriesRun ?? 0,
+    urlsFound: ingested.urlsFound,
+    dealsAdded: ingested.dealsAdded,
+    dealsSkipped: ingested.dealsSkipped,
+    dealsUnqualified: ingested.dealsUnqualified,
+    added: ingested.added,
+    error: null,
+  };
+  finishScan(db, scanId, summary);
+  return summary;
 }

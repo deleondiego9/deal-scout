@@ -10,10 +10,12 @@ import {
 
 export const DEFAULT_QUERIES = [
   'site:bizbuysell.com "seller financing" "real estate included"',
-  'site:bizbuysell.com/business-opportunity owner financing real estate included',
   'site:bizbuysell.com "owner financing" "real estate included"',
   'site:bizbuysell.com "seller financing" "includes real estate"',
   'site:bizbuysell.com "seller financing" "business and real estate"',
+  'site:bizbuysell.com/business-opportunity "real estate included"',
+  'site:bizbuysell.com/business-opportunity "seller financing"',
+  'site:bizbuysell.com/business-opportunity "owner financing"',
   'site:bizquest.com "seller financing" "real estate included"',
   '"business for sale" "seller financing" "real estate included"',
 ];
@@ -28,9 +30,10 @@ function asListing(url, title, snippet) {
   try {
     const canonical = canonicalizeUrl(url);
     if (!isListingUrl(canonical)) return null;
+    const cleaned = decodeEntities(title || "").replace(/\s+/g, " ").trim();
     return {
       url: canonical,
-      title: decodeEntities(title || "").replace(/\s+/g, " ").trim() || canonical,
+      title: nicerTitle(cleaned, canonical) || cleaned || canonical,
       snippet: decodeEntities(snippet || "").replace(/\s+/g, " ").trim(),
     };
   } catch {
@@ -39,7 +42,9 @@ function asListing(url, title, snippet) {
 }
 
 export function parseDuckDuckGoHtml(html) {
-  if (/anomaly|captcha/i.test(html) && !html.includes("result__a")) return [];
+  if (/anomaly|captcha/i.test(html) && !html.includes("result__a") && !html.includes("result-link")) {
+    return [];
+  }
   const $ = cheerio.load(html);
   const results = [];
   $(".result__body").each((_, el) => {
@@ -56,6 +61,34 @@ export function parseDuckDuckGoHtml(html) {
     }
     const listing = asListing(url, title, snippet);
     if (listing) results.push(listing);
+  });
+  if (results.length) return results;
+  return parseDuckDuckGoLite(html);
+}
+
+export function parseDuckDuckGoLite(html) {
+  if (!html || (/anomaly|captcha/i.test(html) && !/uddg=|bizbuysell|bizquest/i.test(html))) return [];
+  const $ = cheerio.load(html);
+  const results = [];
+  const seen = new Set();
+  $("a[href]").each((_, el) => {
+    const node = $(el);
+    const href = node.attr("href") || "";
+    if (!/uddg=|bizbuysell|bizquest|businessesforsale/i.test(href)) return;
+    let url;
+    try {
+      url = canonicalizeUrl(decodeDuckDuckGoUrl(href));
+    } catch {
+      return;
+    }
+    const title = decodeEntities(node.text().trim());
+    const snippet = decodeEntities(
+      node.closest("tr").next("tr").text().replace(/\s+/g, " ").trim()
+    );
+    const listing = asListing(url, title, snippet);
+    if (!listing || seen.has(listing.url)) return;
+    seen.add(listing.url);
+    results.push(listing);
   });
   return results;
 }
@@ -118,16 +151,46 @@ function mergeListings(target, incoming, query) {
       target.set(id, { ...result, query });
       continue;
     }
-    const longer = (result.snippet || "").length > (prev.snippet || "").length;
-    if (longer) {
-      target.set(id, {
-        ...prev,
-        ...result,
-        query: prev.query,
-        title: result.title || prev.title,
-        snippet: result.snippet,
-      });
-    }
+    const snippet = mergeSnippet(prev.snippet, result.snippet);
+    const title =
+      nicerTitle(result.title, result.url) || nicerTitle(prev.title, prev.url) || prev.title;
+    target.set(id, {
+      ...prev,
+      ...result,
+      query: prev.query,
+      title,
+      snippet,
+    });
+  }
+}
+
+function mergeSnippet(left = "", right = "") {
+  const a = String(left || "").trim();
+  const b = String(right || "").trim();
+  if (!a) return b;
+  if (!b || a.includes(b)) return a;
+  if (b.includes(a)) return b;
+  return `${a} ${b}`;
+}
+
+function nicerTitle(title, url) {
+  const text = String(title || "").replace(/\s+/g, " ").trim();
+  if (text && !/^https?:\/\//i.test(text) && !text.includes("›")) return text;
+  return titleFromListingUrl(url);
+}
+
+export function titleFromListingUrl(url = "") {
+  try {
+    const path = decodeURIComponent(new URL(canonicalizeUrl(url)).pathname);
+    const slug = path.split("/").filter(Boolean).find((part) => !/^\d+$/.test(part) && part !== "business-opportunity" && part !== "business-for-sale");
+    if (!slug) return "";
+    return slug
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+  } catch {
+    return "";
   }
 }
 
@@ -138,17 +201,36 @@ async function fetchSearchHtml(url, { fetchImpl = fetch, headers = DEFAULT_HEADE
 }
 
 export async function searchDuckDuckGo(query, options = {}) {
-  const endpoints = ["https://html.duckduckgo.com/html/", "https://duckduckgo.com/html/"];
+  const endpoints = [
+    "https://html.duckduckgo.com/html/",
+    "https://duckduckgo.com/html/",
+    "https://lite.duckduckgo.com/lite/",
+  ];
+  const offsets = [0, 20, 50];
   for (const endpoint of endpoints) {
-    try {
-      const target = new URL(endpoint);
-      target.searchParams.set("q", query);
-      const html = await fetchSearchHtml(target, options);
-      const parsed = parseDuckDuckGoHtml(html);
-      if (parsed.length) return parsed;
-    } catch {
-      // try the next DuckDuckGo host
+    const found = [];
+    const seen = new Set();
+    for (const offset of offsets) {
+      try {
+        const target = new URL(endpoint);
+        target.searchParams.set("q", query);
+        if (offset) target.searchParams.set("s", String(offset));
+        const html = await fetchSearchHtml(target, options);
+        const parsed = parseDuckDuckGoHtml(html);
+        if (!parsed.length) break;
+        let added = 0;
+        for (const result of parsed) {
+          if (seen.has(result.url)) continue;
+          seen.add(result.url);
+          found.push(result);
+          added += 1;
+        }
+        if (!added) break;
+      } catch {
+        break;
+      }
     }
+    if (found.length) return found;
   }
   return [];
 }
@@ -176,13 +258,19 @@ export async function searchBingRss(query, options = {}) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function collectListingResults(queries = DEFAULT_QUERIES, options = {}) {
   const listings = new Map();
+  const delayMs = options.searchDelayMs ?? options.delayMs ?? 0;
 
   for (const query of queries) {
     mergeListings(listings, await searchDuckDuckGo(query, options), query);
     mergeListings(listings, await searchBing(query, options), query);
     mergeListings(listings, await searchBingRss(query, options), query);
+    if (delayMs) await sleep(delayMs);
   }
   return [...listings.values()];
 }

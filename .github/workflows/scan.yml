@@ -9,16 +9,14 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger deployed Deal Scout scan
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Harvest listings from GitHub IP and import to the live app
         env:
           APP_URL: ${{ secrets.APP_URL }}
           API_KEY: ${{ secrets.API_KEY }}
-        run: |
-          if [ -z "$APP_URL" ]; then
-            echo "APP_URL secret is not set. Skipping remote scan. Deploy the app and add APP_URL plus API_KEY secrets to enable this job."
-            exit 0
-          fi
-          curl --fail-with-body -X POST "$APP_URL/api/scan" \
-            -H "Content-Type: application/json" \
-            -H "X-API-Key: $API_KEY" \
-            -d '{}'
+        run: node scripts/harvest.js

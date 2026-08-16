@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseBingHtml, parseBingRss, parseDuckDuckGoHtml } from "../src/search.js";
+import { parseBingHtml, parseBingRss, parseDuckDuckGoHtml, parseDuckDuckGoLite, titleFromListingUrl } from "../src/search.js";
 import { extractFromSearchResult } from "../src/extract.js";
 import { isListingUrl } from "../src/urls.js";
 
@@ -63,5 +63,27 @@ describe("search parsing", () => {
     assert.equal(extracted.qualified, true);
     assert.equal(extracted.sellerFinancing, true);
     assert.equal(extracted.realEstateIncluded, true);
+  });
+
+  it("extracts listing URLs from DuckDuckGo lite HTML", () => {
+    const lite = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "ddg-lite.html"),
+      "utf8"
+    );
+    const results = parseDuckDuckGoLite(lite);
+    assert.equal(results.length, 1);
+    assert.ok(results[0].url.includes("2473314"));
+    assert.match(results[0].snippet, /Seller Financing/i);
+    const extracted = extractFromSearchResult(results[0]);
+    assert.equal(extracted.qualified, true);
+  });
+
+  it("humanizes listing slugs into titles", () => {
+    assert.match(
+      titleFromListingUrl(
+        "https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-included-some-seller-financing/2418402/"
+      ),
+      /Italian Restaurant/i
+    );
   });
 });

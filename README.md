@@ -116,9 +116,9 @@ See `AGENTS.md` for the exact prompt and payload.
 
 `.github/workflows/test.yml` runs the test suite on every push.
 
-`.github/workflows/scan.yml` can call your deployed app every 6 hours if you add repo secrets:
+`.github/workflows/scan.yml` searches Bing and DuckDuckGo **from GitHub’s IP** (the Droplet is often blocked), then imports matches into the live app. Add repo secrets:
 
-- `APP_URL` — e.g. `https://deals.example.com`
+- `APP_URL` — e.g. `https://deleonleads.duckdns.org/deals`
 - `API_KEY` — same key as the server
 
 That is the “every so often” part. Cursor agents do not cron themselves; the app/cron/Action does.

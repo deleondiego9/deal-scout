@@ -50,10 +50,12 @@ function scanSummaryText(last) {
   const when = new Date(last.finishedAt).toLocaleString();
   const added = last.dealsAdded ?? 0;
   const skipped = last.dealsSkipped ?? 0;
+  const unqualified = last.dealsUnqualified ?? 0;
+  const found = last.urlsFound ?? 0;
   if (added === 0) {
-    return `Last scan ${when}: no new listings · ${skipped} already in your list`;
+    return `Last scan ${when}: no new listings · ${found} listing pages · ${skipped} already in your list · ${unqualified} didn’t mention both`;
   }
-  return `Last scan ${when}: ${added} new · ${skipped} already in your list`;
+  return `Last scan ${when}: ${added} new · ${skipped} already in your list · ${unqualified} didn’t mention both`;
 }
 
 function seenBadge(deal, lastScan) {
@@ -86,7 +88,7 @@ function renderStats(payload) {
 
 function emptyMessage() {
   if (statusFilter === "fresh") {
-    return "No new listings this scan. Public search is still returning the same matches you already have under New.";
+    return "No new listings this scan. Search still only found matches you already have, or pages that mention financing or real estate but not both.";
   }
   if (statusFilter === "new") {
     return "No unreviewed deals. Run a scan, or everything is saved, called, or dismissed.";
@@ -160,13 +162,17 @@ scanBtn.addEventListener("click", async () => {
   try {
     const result = await api("api/scan", { method: "POST", body: "{}" });
     const s = result.summary || {};
+    const added = s.dealsAdded || 0;
+    const skipped = s.dealsSkipped || 0;
+    const unqualified = s.dealsUnqualified || 0;
+    const found = s.urlsFound || 0;
     if (s.error) {
       scanNotice = `Scan failed: ${s.error}`;
-    } else if ((s.dealsAdded || 0) === 0) {
-      scanNotice = `No new listings. Search engines still only indexed ${s.dealsSkipped || 0} matches already in your list.`;
+    } else if (added === 0) {
+      scanNotice = `No new listings. Search indexed ${found} listing pages · ${skipped} already in your list · ${unqualified} didn’t mention both filters.`;
       setFilter("new");
     } else {
-      scanNotice = `Added ${s.dealsAdded} new. ${s.dealsSkipped || 0} already in your list.`;
+      scanNotice = `Added ${added} new. ${skipped} already in your list. ${unqualified} didn’t mention both filters.`;
       setFilter("fresh");
     }
     await refresh();
