@@ -10,6 +10,7 @@ import {
 
 export const DEFAULT_QUERIES = [
   'site:bizbuysell.com "seller financing" "real estate included"',
+  'site:bizbuysell.com/business-opportunity owner financing real estate included',
   'site:bizbuysell.com "owner financing" "real estate included"',
   'site:bizbuysell.com "seller financing" "includes real estate"',
   'site:bizbuysell.com "seller financing" "business and real estate"',
@@ -137,14 +138,19 @@ async function fetchSearchHtml(url, { fetchImpl = fetch, headers = DEFAULT_HEADE
 }
 
 export async function searchDuckDuckGo(query, options = {}) {
-  const target = new URL("https://html.duckduckgo.com/html/");
-  target.searchParams.set("q", query);
-  try {
-    const html = await fetchSearchHtml(target, options);
-    return parseDuckDuckGoHtml(html);
-  } catch {
-    return [];
+  const endpoints = ["https://html.duckduckgo.com/html/", "https://duckduckgo.com/html/"];
+  for (const endpoint of endpoints) {
+    try {
+      const target = new URL(endpoint);
+      target.searchParams.set("q", query);
+      const html = await fetchSearchHtml(target, options);
+      const parsed = parseDuckDuckGoHtml(html);
+      if (parsed.length) return parsed;
+    } catch {
+      // try the next DuckDuckGo host
+    }
   }
+  return [];
 }
 
 export async function searchBing(query, options = {}) {
@@ -172,15 +178,10 @@ export async function searchBingRss(query, options = {}) {
 
 export async function collectListingResults(queries = DEFAULT_QUERIES, options = {}) {
   const listings = new Map();
-  let useBing = false;
 
   for (const query of queries) {
-    let results = useBing ? await searchBing(query, options) : await searchDuckDuckGo(query, options);
-    if (!useBing && results.length === 0) {
-      useBing = true;
-      results = await searchBing(query, options);
-    }
-    mergeListings(listings, results, query);
+    mergeListings(listings, await searchDuckDuckGo(query, options), query);
+    mergeListings(listings, await searchBing(query, options), query);
     mergeListings(listings, await searchBingRss(query, options), query);
   }
   return [...listings.values()];
