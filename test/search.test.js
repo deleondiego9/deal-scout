@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseBingHtml, parseDuckDuckGoHtml } from "../src/search.js";
+import { parseBingHtml, parseBingRss, parseDuckDuckGoHtml } from "../src/search.js";
 import { extractFromSearchResult } from "../src/extract.js";
 import { isListingUrl } from "../src/urls.js";
 
@@ -14,6 +14,11 @@ const fixture = readFileSync(
 
 const bingFixture = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "bing-search.html"),
+  "utf8"
+);
+
+const bingRssFixture = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "bing-rss.xml"),
   "utf8"
 );
 
@@ -45,5 +50,18 @@ describe("search parsing", () => {
       "https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-included-some-seller-financing/2418402"
     );
     assert.match(results[0].title, /Italian Restaurant/i);
+  });
+
+  it("extracts listing URLs and richer snippets from Bing RSS", () => {
+    const results = parseBingRss(bingRssFixture);
+    assert.equal(results.length, 2);
+    assert.equal(
+      results[1].url,
+      "https://www.bizbuysell.com/business-opportunity/362-unit-self-storage-portfolio-semi-absentee-seller-financing/2521029"
+    );
+    const extracted = extractFromSearchResult(results[1]);
+    assert.equal(extracted.qualified, true);
+    assert.equal(extracted.sellerFinancing, true);
+    assert.equal(extracted.realEstateIncluded, true);
   });
 });

@@ -17,7 +17,7 @@ const REAL_ESTATE_PATTERNS = [
   /includes?\s+(?:the\s+)?real\s+estate/i,
   /including\s+(?:the\s+)?real\s+estate/i,
   /real\s+estate\s+owned/i,
-  /with\s+real\s+estate/i,
+  /with\s+(?:the\s+)?real\s+estate/i,
   /plus\s+real\s+estate/i,
   /\+\s*real\s+estate/i,
   /real\s+estate\s+\+/i,

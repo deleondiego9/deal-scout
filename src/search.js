@@ -5,6 +5,7 @@ import {
   decodeDuckDuckGoUrl,
   decodeEntities,
   isListingUrl,
+  listingKey,
 } from "./urls.js";
 
 export const DEFAULT_QUERIES = [
@@ -84,6 +85,51 @@ export function parseBingHtml(html) {
   return results;
 }
 
+export function parseBingRss(xml) {
+  if (!xml || !xml.includes("<item>")) return [];
+  const $ = cheerio.load(xml, { xmlMode: true });
+  const results = [];
+  const seen = new Set();
+  $("item").each((_, el) => {
+    const node = $(el);
+    const listing = asListing(
+      node.find("link").first().text().trim(),
+      node.find("title").first().text(),
+      node.find("description").first().text()
+    );
+    if (!listing || seen.has(listing.url)) return;
+    seen.add(listing.url);
+    results.push(listing);
+  });
+  return results;
+}
+
+function listingIdentity(result) {
+  return listingKey(result.url) || result.url;
+}
+
+function mergeListings(target, incoming, query) {
+  for (const result of incoming) {
+    if (!isListingUrl(result.url)) continue;
+    const id = listingIdentity(result);
+    const prev = target.get(id);
+    if (!prev) {
+      target.set(id, { ...result, query });
+      continue;
+    }
+    const longer = (result.snippet || "").length > (prev.snippet || "").length;
+    if (longer) {
+      target.set(id, {
+        ...prev,
+        ...result,
+        query: prev.query,
+        title: result.title || prev.title,
+        snippet: result.snippet,
+      });
+    }
+  }
+}
+
 async function fetchSearchHtml(url, { fetchImpl = fetch, headers = DEFAULT_HEADERS } = {}) {
   const response = await fetchImpl(url, { headers, redirect: "follow" });
   if (!response.ok) return "";
@@ -112,9 +158,20 @@ export async function searchBing(query, options = {}) {
   }
 }
 
+export async function searchBingRss(query, options = {}) {
+  const target = new URL("https://www.bing.com/search");
+  target.searchParams.set("q", query);
+  target.searchParams.set("format", "rss");
+  try {
+    const xml = await fetchSearchHtml(target, options);
+    return parseBingRss(xml);
+  } catch {
+    return [];
+  }
+}
+
 export async function collectListingResults(queries = DEFAULT_QUERIES, options = {}) {
-  const seen = new Set();
-  const listings = [];
+  const listings = new Map();
   let useBing = false;
 
   for (const query of queries) {
@@ -123,12 +180,8 @@ export async function collectListingResults(queries = DEFAULT_QUERIES, options =
       useBing = true;
       results = await searchBing(query, options);
     }
-    for (const result of results) {
-      if (!isListingUrl(result.url)) continue;
-      if (seen.has(result.url)) continue;
-      seen.add(result.url);
-      listings.push({ ...result, query });
-    }
+    mergeListings(listings, results, query);
+    mergeListings(listings, await searchBingRss(query, options), query);
   }
-  return listings;
+  return [...listings.values()];
 }

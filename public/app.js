@@ -84,8 +84,24 @@ function renderStats(payload) {
   scanStatus.textContent = scanSummaryText(last);
 }
 
+function emptyMessage() {
+  if (statusFilter === "fresh") {
+    return "No new listings this scan. Public search is still returning the same matches you already have under New.";
+  }
+  if (statusFilter === "new") {
+    return "No unreviewed deals. Run a scan, or everything is saved, called, or dismissed.";
+  }
+  return "No deals in this view.";
+}
+
+function setFilter(next) {
+  statusFilter = next;
+  document.querySelectorAll(".chip").forEach((el) => el.classList.toggle("active", el.dataset.status === next));
+}
+
 function renderDeals(deals, lastScan) {
   dealsEl.innerHTML = "";
+  emptyEl.textContent = emptyMessage();
   emptyEl.classList.toggle("hidden", deals.length > 0);
   for (const deal of deals) {
     const card = document.createElement("article");
@@ -151,6 +167,7 @@ scanBtn.addEventListener("click", async () => {
     } else {
       scanNotice = `Added ${s.dealsAdded} new. ${s.dealsSkipped || 0} already in your list.`;
     }
+    setFilter("fresh");
     await refresh();
   } catch (error) {
     const message = error.message || "Scan failed";
@@ -167,8 +184,7 @@ scanBtn.addEventListener("click", async () => {
 document.querySelector(".chips").addEventListener("click", (event) => {
   const chip = event.target.closest(".chip");
   if (!chip) return;
-  statusFilter = chip.dataset.status;
-  document.querySelectorAll(".chip").forEach((el) => el.classList.toggle("active", el === chip));
+  setFilter(chip.dataset.status);
   refresh().catch((error) => {
     scanStatus.textContent = error.message;
   });

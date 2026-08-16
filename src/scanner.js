@@ -1,13 +1,29 @@
 import { extractFromHtml, extractFromSearchResult } from "./extract.js";
 import { collectListingResults, DEFAULT_QUERIES } from "./search.js";
 import { canonicalizeUrl, listingFingerprint, listingKey } from "./urls.js";
-import { finishScan, hasSeen, markSeen, recordSkip, startScan, upsertDeal } from "./db.js";
+import {
+  finishScan,
+  findDealByFingerprint,
+  findDealByListingKey,
+  findDealByUrl,
+  recordSkip,
+  startScan,
+  upsertDeal,
+} from "./db.js";
 
 const DEFAULT_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   Accept: "text/html,application/xhtml+xml",
 };
+
+function existingDeal(db, canonicalUrl, key, fingerprint) {
+  return (
+    findDealByUrl(db, canonicalUrl) ||
+    findDealByListingKey(db, key) ||
+    findDealByFingerprint(db, fingerprint)
+  );
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,7 +77,7 @@ export async function runScan(db, options = {}) {
     for (const result of sliced) {
       const canonicalUrl = canonicalizeUrl(result.url);
       const key = listingKey(canonicalUrl);
-      if (hasSeen(db, canonicalUrl, { listingKey: key })) {
+      if (existingDeal(db, canonicalUrl, key)) {
         recordSkip(db, { canonicalUrl, listingKey: key });
         summary.dealsSkipped += 1;
         continue;
@@ -78,19 +94,13 @@ export async function runScan(db, options = {}) {
         extracted.location,
         extracted.priceAmount
       );
-      if (hasSeen(db, canonicalUrl, { fingerprint, listingKey: key })) {
+      if (existingDeal(db, canonicalUrl, key, fingerprint)) {
         recordSkip(db, { canonicalUrl, fingerprint, listingKey: key });
         summary.dealsSkipped += 1;
         continue;
       }
 
       if (requireBoth && !extracted.qualified) {
-        markSeen(db, {
-          canonicalUrl,
-          fingerprint,
-          listingKey: key,
-          status: "skipped_unqualified",
-        });
         summary.dealsSkipped += 1;
         continue;
       }

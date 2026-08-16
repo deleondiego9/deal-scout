@@ -274,6 +274,14 @@ export function listDeals(db, { status, qualified, q, called } = {}) {
   const params = [];
   if (status === "called" || called === true || called === "1") {
     sql += " AND called = 1";
+  } else if (status === "fresh") {
+    const last = latestScan(db);
+    if (last?.startedAt) {
+      sql += " AND status = ? AND called = 0 AND first_seen_at >= ?";
+      params.push("new", last.startedAt);
+    } else {
+      sql += " AND 1=0";
+    }
   } else if (status === "new") {
     sql += " AND status = ? AND called = 0";
     params.push("new");
