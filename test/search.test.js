@@ -3,12 +3,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseDuckDuckGoHtml } from "../src/search.js";
+import { parseBingHtml, parseDuckDuckGoHtml } from "../src/search.js";
 import { extractFromSearchResult } from "../src/extract.js";
 import { isListingUrl } from "../src/urls.js";
 
 const fixture = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "ddg-search.html"),
+  "utf8"
+);
+
+const bingFixture = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "bing-search.html"),
   "utf8"
 );
 
@@ -30,5 +35,15 @@ describe("search parsing", () => {
     assert.equal(extracted.qualified, true);
     assert.equal(extracted.location, "Lake County, FL");
     assert.equal(extracted.source, "BizBuySell");
+  });
+
+  it("extracts listing URLs from Bing redirect links", () => {
+    const results = parseBingHtml(bingFixture);
+    assert.equal(results.length, 1);
+    assert.equal(
+      results[0].url,
+      "https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-included-some-seller-financing/2418402"
+    );
+    assert.match(results[0].title, /Italian Restaurant/i);
   });
 });

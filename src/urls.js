@@ -30,6 +30,23 @@ export function decodeEntities(value = "") {
     .replace(/&nbsp;/g, " ");
 }
 
+export function decodeBingUrl(href = "") {
+  const unescaped = decodeEntities(href);
+  try {
+    const parsed = new URL(unescaped, "https://www.bing.com");
+    const u = parsed.searchParams.get("u");
+    if (u && u.startsWith("a1")) {
+      const b64 = u.slice(2).replace(/-/g, "+").replace(/_/g, "/");
+      const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+      const decoded = Buffer.from(padded, "base64").toString("utf8");
+      if (decoded.startsWith("http://") || decoded.startsWith("https://")) return decoded;
+    }
+    return parsed.href;
+  } catch {
+    return href;
+  }
+}
+
 export function decodeDuckDuckGoUrl(href = "") {
   const raw = href.startsWith("//") ? `https:${href}` : href;
   try {
@@ -67,7 +84,10 @@ export function isKnownListingHost(url) {
 }
 
 export function canonicalizeUrl(url) {
-  const decoded = decodeDuckDuckGoUrl(url);
+  let decoded = decodeDuckDuckGoUrl(url);
+  if (/bing\.com\/ck\//i.test(decoded) || /[?&]u=a1/i.test(decodeEntities(url))) {
+    decoded = decodeBingUrl(url);
+  }
   const parsed = new URL(decoded);
   parsed.hash = "";
   parsed.hostname = parsed.hostname.toLowerCase();
@@ -81,6 +101,7 @@ export function canonicalizeUrl(url) {
     "fbclid",
     "gclid",
     "rut",
+    "msockid",
   ]);
   for (const key of [...parsed.searchParams.keys()]) {
     if (drop.has(key) || key.startsWith("utm_")) parsed.searchParams.delete(key);

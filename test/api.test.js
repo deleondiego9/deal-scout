@@ -122,10 +122,9 @@ describe("http api", () => {
     assert.equal(result.body.repeated, true);
   });
 
-  it("runs a scan against search fixtures and skips repeats on the second run", async () => {
+  it("runs a scan without an API key and skips repeats on the second run", async () => {
     const first = await req("/api/scan", {
       method: "POST",
-      headers: { "X-API-Key": "test-key" },
       body: "{}",
     });
     assert.equal(first.status, 200);
@@ -134,7 +133,6 @@ describe("http api", () => {
 
     const second = await req("/api/scan", {
       method: "POST",
-      headers: { "X-API-Key": "test-key" },
       body: "{}",
     });
     assert.equal(second.body.summary.dealsAdded, 0);

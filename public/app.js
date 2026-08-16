@@ -123,10 +123,20 @@ scanBtn.addEventListener("click", async () => {
   try {
     const result = await api("api/scan", { method: "POST", body: "{}" });
     const s = result.summary || {};
-    scanStatus.textContent = `Added ${s.dealsAdded || 0}, skipped ${s.dealsSkipped || 0}${s.error ? ` · ${s.error}` : ""}`;
+    if (s.error) {
+      scanStatus.textContent = `Scan failed: ${s.error}`;
+    } else if ((s.dealsAdded || 0) === 0) {
+      scanStatus.textContent = `Scan finished. No new listings this time (checked ${s.urlsFound || 0} results).`;
+    } else {
+      scanStatus.textContent = `Added ${s.dealsAdded}, skipped ${s.dealsSkipped || 0}.`;
+    }
     await refresh();
   } catch (error) {
-    scanStatus.textContent = error.message;
+    const message = error.message || "Scan failed";
+    scanStatus.textContent =
+      message.includes("API key")
+        ? "Paste the API key above, then tap Scan now."
+        : message;
   } finally {
     scanBtn.disabled = false;
   }

@@ -1,14 +1,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import {
-  canonicalizeUrl,
-  decodeDuckDuckGoUrl,
-  isListingUrl,
-  listingFingerprint,
-  sourceFromUrl,
-} from "../src/urls.js";
+import { canonicalizeUrl, decodeBingUrl, decodeDuckDuckGoUrl, isListingUrl, listingFingerprint, sourceFromUrl } from "../src/urls.js";
 
 describe("urls", () => {
+  it("unwraps Bing redirect links", () => {
+    const href =
+      "https://www.bing.com/ck/a?!&&p=abc&u=a1aHR0cHM6Ly93d3cuYml6YnV5c2VsbC5jb20vYnVzaW5lc3Mtb3Bwb3J0dW5pdHkvaXRhbGlhbi1yZXN0YXVyYW50LXJlYWwtZXN0YXRlLWluY2x1ZGVkLXNvbWUtc2VsbGVyLWZpbmFuY2luZy8yNDE4NDAyLw";
+    assert.match(decodeBingUrl(href), /bizbuysell\.com\/business-opportunity\/italian-restaurant/);
+    assert.equal(
+      canonicalizeUrl(href),
+      "https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-included-some-seller-financing/2418402"
+    );
+  });
   it("unwraps DuckDuckGo redirect links", () => {
     const href =
       "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.bizbuysell.com%2Fbusiness-opportunity%2Fcar-wash%2F2512479%2F&rut=abc";

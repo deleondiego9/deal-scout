@@ -108,7 +108,7 @@ export function createApp(db, options = {}) {
     }
   });
 
-  app.post("/api/scan", requireKey, async (req, res) => {
+  app.post("/api/scan", async (req, res) => {
     if (scanLock) {
       return res.status(409).json({ error: "A scan is already running" });
     }
