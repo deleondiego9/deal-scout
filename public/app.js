@@ -164,10 +164,11 @@ scanBtn.addEventListener("click", async () => {
       scanNotice = `Scan failed: ${s.error}`;
     } else if ((s.dealsAdded || 0) === 0) {
       scanNotice = `No new listings. ${s.dealsSkipped || 0} already in your list — not added again.`;
+      setFilter("new");
     } else {
       scanNotice = `Added ${s.dealsAdded} new. ${s.dealsSkipped || 0} already in your list.`;
+      setFilter("fresh");
     }
-    setFilter("fresh");
     await refresh();
   } catch (error) {
     const message = error.message || "Scan failed";
