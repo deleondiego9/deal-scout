@@ -163,7 +163,7 @@ scanBtn.addEventListener("click", async () => {
     if (s.error) {
       scanNotice = `Scan failed: ${s.error}`;
     } else if ((s.dealsAdded || 0) === 0) {
-      scanNotice = `No new listings. ${s.dealsSkipped || 0} already in your list — not added again.`;
+      scanNotice = `No new listings. Search engines still only indexed ${s.dealsSkipped || 0} matches already in your list.`;
       setFilter("new");
     } else {
       scanNotice = `Added ${s.dealsAdded} new. ${s.dealsSkipped || 0} already in your list.`;

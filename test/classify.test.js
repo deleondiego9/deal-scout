@@ -13,6 +13,15 @@ describe("classify", () => {
     assert.equal(result.score, 100);
   });
 
+  it("treats w/Real Estate plus owner financing as qualified", () => {
+    const result = classify(
+      "NC Engineered Wood Component Manufacturing Facility w/Real Estate. Seller financing available."
+    );
+    assert.equal(result.qualified, true);
+    assert.equal(result.sellerFinancing, true);
+    assert.equal(result.realEstateIncluded, true);
+  });
+
   it("accepts owner financing and plus-real-estate phrasing", () => {
     const result = classify(
       "Auto Repair Shop + Real Estate. Owner financing available. The business and real estate are offered together."
