@@ -229,7 +229,9 @@ export function ingestDeal(db, payload) {
   if (payload.realEstateIncluded !== undefined) {
     merged.realEstateIncluded = Boolean(payload.realEstateIncluded);
   }
-  merged.qualified = Boolean(merged.sellerFinancing && merged.realEstateIncluded);
+  merged.qualified = Boolean(
+    merged.sellerFinancing && merged.realEstateIncluded && !merged.landDeal
+  );
   if (payload.score !== undefined) merged.score = payload.score;
 
   return upsertDeal(db, merged);

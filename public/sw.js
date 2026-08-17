@@ -1,4 +1,4 @@
-const CACHE = "deal-scout-v10";
+const CACHE = "deal-scout-v11";
 const SHELL = ["./", "./styles.css", "./app.js", "./manifest.json", "./icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {

@@ -104,8 +104,9 @@ export function withMarketplaceDefaults(url, flags) {
     ...flags,
     realEstateIncluded,
     realEstateEvidence,
-    qualified: Boolean(flags.sellerFinancing && realEstateIncluded),
-    score,
+    landDeal: Boolean(flags.landDeal),
+    qualified: Boolean(flags.sellerFinancing && realEstateIncluded && !flags.landDeal),
+    score: flags.landDeal ? Math.max(0, score - 50) : score,
   };
 }
 

@@ -45,6 +45,23 @@ describe("classify", () => {
     assert.equal(result.sellerFinancing, false);
     assert.equal(result.qualified, false);
   });
+
+  it("rejects vacant land and development sites even with owner financing", () => {
+    const land = classify(
+      "214 Raffel Rd - 8.7 Acre Development Site 0% Owner Financing. 8.67 Acres of Commercial Land Offered at $399,000 in Woodstock, IL."
+    );
+    assert.equal(land.sellerFinancing, true);
+    assert.equal(land.landDeal, true);
+    assert.equal(land.qualified, false);
+  });
+
+  it("keeps a business that includes land plus the building", () => {
+    const result = classify(
+      "Tucson #6 Bar - Real Estate Included. Owner financing available with 20% down. Land, building, and business included."
+    );
+    assert.equal(result.landDeal, false);
+    assert.equal(result.qualified, true);
+  });
 });
 
 describe("classify uses listing URL slugs", () => {
@@ -71,6 +88,19 @@ describe("classify uses listing URL slugs", () => {
     assert.equal(extracted.sellerFinancing, true);
     assert.equal(extracted.realEstateIncluded, true);
     assert.equal(extracted.qualified, true);
+  });
+
+  it("rejects LoopNet land-only development sites", async () => {
+    const { extractFromSearchResult } = await import("../src/extract.js");
+    const extracted = extractFromSearchResult({
+      url: "https://www.loopnet.com/Listing/214-Raffel-Rd-Woodstock-IL/35100018/",
+      title: "214 Raffel Rd - 8.7 Acre Development Site 0% Owner Financing",
+      snippet:
+        "8.67 Acres of Commercial Land Offered at $399,000 in Woodstock, IL 60098. Owner financing.",
+    });
+    assert.equal(extracted.sellerFinancing, true);
+    assert.equal(extracted.landDeal, true);
+    assert.equal(extracted.qualified, false);
   });
 
   it("does not assume real estate for LoopNet business-opportunity ads", async () => {

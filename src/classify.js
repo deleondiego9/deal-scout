@@ -48,6 +48,29 @@ const NEGATIVE_REAL_ESTATE = [
   /leased\s+(?:facility|building|property)/i,
 ];
 
+const LAND_ONLY_PATTERNS = [
+  /development\s+site/i,
+  /vacant\s+(?:land|lot|parcel|acreage|site)/i,
+  /raw\s+land/i,
+  /land\s+only\b/i,
+  /(?:commercial|residential)\s+land\s+offered/i,
+  /land\s+offered\s+at/i,
+  /\d[\d.,]*\s+acres?\s+of\s+(?:commercial\s+|residential\s+)?land/i,
+  /\bpad\s+site\b/i,
+  /\bpotential\s+site\b/i,
+];
+
+const IMPROVED_PROPERTY_PATTERNS = [
+  /\bexisting\s+buildings?\b/i,
+  /\bthis\s+(?:retail|office|multifamily|industrial|hotel|motel|warehouse)\s+propert/i,
+  /\b(?:multifamily|apartment|retail|office|industrial)\s+propert/i,
+  /\b(?:restaurant|pizzeria|bar|motel|hotel|car\s+wash|laundromat|self-?storage|gas\s+station|convenience\s+store|funeral\s+home)\b/i,
+  /\breal\s+estate\s+included\b/i,
+  /\bbusiness\s+included\b/i,
+  /\boperating\s+(?:business|shop|facility)\b/i,
+  /\bfacility\b/i,
+];
+
 function collectHits(text, patterns) {
   const hits = [];
   for (const pattern of patterns) {
@@ -63,24 +86,29 @@ export function classify(text = "") {
   const realEstateHits = collectHits(hay, REAL_ESTATE_PATTERNS);
   const negativeFinancing = collectHits(hay, NEGATIVE_FINANCING);
   const negativeRealEstate = collectHits(hay, NEGATIVE_REAL_ESTATE);
+  const landHits = collectHits(hay, LAND_ONLY_PATTERNS);
+  const improvedHits = collectHits(hay, IMPROVED_PROPERTY_PATTERNS);
 
   const sellerFinancing = financingHits.length > 0 && negativeFinancing.length === 0;
   const realEstateIncluded =
     realEstateHits.length > 0 && negativeRealEstate.length === 0;
+  const landDeal = landHits.length > 0 && improvedHits.length === 0;
 
   let score = 0;
   if (sellerFinancing) score += 50;
   if (realEstateIncluded) score += 50;
   if (negativeFinancing.length || negativeRealEstate.length) score = Math.max(0, score - 40);
+  if (landDeal) score = Math.max(0, score - 50);
 
   return {
     sellerFinancing,
     realEstateIncluded,
-    qualified: sellerFinancing && realEstateIncluded,
+    landDeal,
+    qualified: sellerFinancing && realEstateIncluded && !landDeal,
     score,
     financingEvidence: financingHits,
     realEstateEvidence: realEstateHits,
-    negativeEvidence: [...negativeFinancing, ...negativeRealEstate],
+    negativeEvidence: [...negativeFinancing, ...negativeRealEstate, ...landHits],
   };
 }
 
@@ -118,4 +146,4 @@ export function parseLocation(text = "") {
   return null;
 }
 
-export { FINANCING_PATTERNS, REAL_ESTATE_PATTERNS };
+export { FINANCING_PATTERNS, REAL_ESTATE_PATTERNS, LAND_ONLY_PATTERNS };
