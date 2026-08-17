@@ -83,11 +83,11 @@ export function createApp(db, options = {}) {
   app.patch("/api/deals/:id", (req, res) => {
     try {
       const body = req.body || {};
-      const deal = updateDeal(db, Number(req.params.id), {
-        status: body.status,
-        notes: body.notes,
-        called: body.called,
-      });
+      const patch = {};
+      if (Object.hasOwn(body, "status")) patch.status = body.status;
+      if (Object.hasOwn(body, "notes")) patch.notes = body.notes;
+      if (Object.hasOwn(body, "called")) patch.called = body.called;
+      const deal = updateDeal(db, Number(req.params.id), patch);
       if (!deal) return res.status(404).json({ error: "Not found" });
       res.json({ deal });
     } catch (error) {

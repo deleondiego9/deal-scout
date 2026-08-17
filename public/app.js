@@ -96,6 +96,14 @@ function emptyMessage() {
   return "No deals in this view.";
 }
 
+function filterForDeal(deal) {
+  if (!deal) return statusFilter;
+  if (deal.called) return "called";
+  if (deal.status === "saved") return "saved";
+  if (deal.status === "dismissed") return "dismissed";
+  return "new";
+}
+
 function setFilter(next) {
   statusFilter = next;
   document.querySelectorAll(".chip").forEach((el) => el.classList.toggle("active", el.dataset.status === next));
@@ -126,7 +134,7 @@ function renderDeals(deals, lastScan) {
         <a href="${deal.url}" target="_blank" rel="noreferrer">Open listing</a>
         <button type="button" data-id="${deal.id}" data-save-notes="1">Save notes</button>
         <button type="button" data-id="${deal.id}" data-called="${deal.called ? "0" : "1"}">${deal.called ? "Unmark called" : "Mark called"}</button>
-        <button type="button" data-id="${deal.id}" data-status="saved">Save</button>
+        <button type="button" data-id="${deal.id}" data-status="saved">Keep</button>
         <button type="button" data-id="${deal.id}" data-status="dismissed">Dismiss</button>
       </div>
     `;
@@ -212,13 +220,15 @@ dealsEl.addEventListener("click", async (event) => {
   if (button.dataset.status) body.status = button.dataset.status;
   if (button.dataset.called !== undefined) body.called = button.dataset.called === "1";
   if (button.dataset.saveNotes) {
-    const notes = dealsEl.querySelector(`[data-notes-id="${id}"]`);
+    const notes = button.closest("article")?.querySelector(`[data-notes-id="${id}"]`);
     body.notes = notes ? notes.value : "";
   }
-  await api(`api/deals/${id}`, {
+  const result = await api(`api/deals/${id}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
+  if (button.dataset.saveNotes) scanNotice = "Notes saved.";
+  setFilter(filterForDeal(result.deal));
   await refresh();
 });
 

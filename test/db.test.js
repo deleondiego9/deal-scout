@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal, hasSeen, recordSkip, getDeal, startScan, latestScan } from "../src/db.js";
+import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal, hasSeen, recordSkip, getDeal, startScan, latestScan, finishScan } from "../src/db.js";
 import { ingestDeal } from "../src/scanner.js";
 
 let dir;
@@ -207,5 +207,31 @@ describe("database dedupe", () => {
     const last = latestScan(db);
     assert.ok(last.finishedAt);
     assert.equal(last.error, "interrupted");
+  });
+
+  it("keeps Just found listings after a later scan that added nothing", () => {
+    const created = upsertDeal(db, {
+      canonicalUrl: "https://www.bizbuysell.com/business-opportunity/notes-stay/2550099",
+      title: "Cafe Real Estate Included Seller Financing",
+      location: "Austin, TX",
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+      score: 100,
+    });
+    const addedScan = startScan(db);
+    finishScan(db, addedScan, { queriesRun: 1, urlsFound: 1, dealsAdded: 1, dealsSkipped: 0, dealsUnqualified: 0 });
+    db.prepare("UPDATE deals SET first_seen_at = ? WHERE id = ?").run(latestScan(db).startedAt, created.deal.id);
+
+    const emptyScan = startScan(db);
+    finishScan(db, emptyScan, { queriesRun: 1, urlsFound: 4, dealsAdded: 0, dealsSkipped: 4, dealsUnqualified: 0 });
+
+    updateDeal(db, created.deal.id, { notes: "Call back Thursday" });
+    const fresh = listDeals(db, { status: "fresh", qualified: "1" });
+    const listedNew = listDeals(db, { status: "new", qualified: "1" });
+    assert.equal(getDeal(db, created.deal.id).status, "new");
+    assert.equal(getDeal(db, created.deal.id).notes, "Call back Thursday");
+    assert.ok(fresh.some((deal) => deal.id === created.deal.id));
+    assert.ok(listedNew.some((deal) => deal.id === created.deal.id));
   });
 });

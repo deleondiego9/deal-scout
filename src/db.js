@@ -285,7 +285,7 @@ export function listDeals(db, { status, qualified, q, called } = {}) {
   if (status === "called" || called === true || called === "1") {
     sql += " AND called = 1";
   } else if (status === "fresh") {
-    const last = latestScan(db);
+    const last = latestAddedScan(db) || latestScan(db);
     if (last?.startedAt) {
       sql += " AND status = ? AND called = 0 AND first_seen_at >= ?";
       params.push("new", last.startedAt);
@@ -394,6 +394,17 @@ export function finishScan(db, id, summary) {
 
 export function latestScan(db) {
   const row = db.prepare("SELECT * FROM scans ORDER BY id DESC LIMIT 1").get();
+  return mapScan(row);
+}
+
+export function latestAddedScan(db) {
+  const row = db
+    .prepare("SELECT * FROM scans WHERE IFNULL(deals_added, 0) > 0 ORDER BY id DESC LIMIT 1")
+    .get();
+  return mapScan(row);
+}
+
+function mapScan(row) {
   if (!row) return null;
   return {
     id: row.id,

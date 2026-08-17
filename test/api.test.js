@@ -151,7 +151,7 @@ describe("http api", () => {
   });
 
   it("saves notes and marks a deal as called", async () => {
-    const deals = await req("/api/deals?status=all");
+    const deals = await req("/api/deals?status=new");
     const id = deals.body.deals[0].id;
     const noted = await req(`/api/deals/${id}`, {
       method: "PATCH",
@@ -160,6 +160,9 @@ describe("http api", () => {
     assert.equal(noted.status, 200);
     assert.equal(noted.body.deal.notes, "Left voicemail with broker Jane");
     assert.equal(noted.body.deal.called, false);
+    assert.equal(noted.body.deal.status, "new");
+    const stillNew = await req("/api/deals?status=new");
+    assert.ok(stillNew.body.deals.some((deal) => deal.id === id));
 
     const called = await req(`/api/deals/${id}`, {
       method: "PATCH",
