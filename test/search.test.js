@@ -110,6 +110,23 @@ https://www.bizbuysell.com/business-opportunity/car-wash-real-estate-included-se
     assert.ok(results.some((item) => item.url.includes("bizbuysell.com/business-opportunity")));
   });
 
+  it("does not send a browser User-Agent to the reader", async () => {
+    const fetchImpl = async (input, init = {}) => {
+      const href = String(input);
+      const ua = init.headers?.["User-Agent"] || "";
+      if (href.includes("r.jina.ai")) {
+        if (/Chrome\/\d/i.test(ua)) {
+          return { ok: false, status: 403, text: async () => "blocked" };
+        }
+        return { ok: true, status: 200, text: async () => fixture };
+      }
+      return { ok: true, status: 202, text: async () => "anomaly" };
+    };
+    const results = await searchDuckDuckGo('site:loopnet.com/Listing "seller financing"', { fetchImpl });
+    assert.ok(results.length >= 4);
+    assert.ok(results.every((item) => isListingUrl(item.url)));
+  });
+
   it("retries DuckDuckGo through Jina when the direct HTML is blocked", async () => {
     const fetchImpl = async (input) => {
       const href = String(input);

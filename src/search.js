@@ -223,7 +223,7 @@ function looksBlockedOrEmpty(text, status) {
 }
 
 function hasListingSignal(text) {
-  return /bizbuysell\.com\/(?:business-opportunity|business-for-sale)|loopnet\.com\/Listing|bizquest\.com\/business-for-sale|crexi\.com\/properties/i.test(
+  return /(?:www\.)?(?:bizbuysell\.com\/(?:business-opportunity|business-for-sale)\/[^\s"'<>]+\/\d{5,}|loopnet\.com\/Listing\/[^\s"'<>]+\/\d{5,}|bizquest\.com\/business-for-sale\/|crexi\.com\/properties\/)/i.test(
     text
   );
 }
@@ -261,13 +261,13 @@ function proxyFetchOptions(headers) {
   return options;
 }
 
-async function fetchViaJina(url, { fetchImpl = fetch, headers = DEFAULT_HEADERS } = {}) {
+async function fetchViaJina(url, { fetchImpl = fetch } = {}) {
   const target = `https://r.jina.ai/${url}`;
   const response = await fetchImpl(target, {
     ...proxyFetchOptions({
-      ...headers,
       Accept: "text/html,text/plain,*/*",
       "X-Return-Format": "html",
+      "User-Agent": "DealScout/1.0",
     }),
   });
   if (!response.ok) return "";
