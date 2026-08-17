@@ -336,7 +336,7 @@ export async function searchDuckDuckGo(query, options = {}) {
     "https://duckduckgo.com/html/",
     "https://lite.duckduckgo.com/lite/",
   ];
-  const offsets = [0, 20];
+  const offsets = [0];
   for (const endpoint of endpoints) {
     const found = [];
     const seen = new Set();
