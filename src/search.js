@@ -78,7 +78,7 @@ export function parseDuckDuckGoLite(html) {
   $("a[href]").each((_, el) => {
     const node = $(el);
     const href = node.attr("href") || "";
-    if (!/uddg=|bizbuysell|bizquest|businessesforsale/i.test(href)) return;
+    if (!/uddg=|bizbuysell|bizquest|businessesforsale|loopnet|crexi/i.test(href)) return;
     let url;
     try {
       url = canonicalizeUrl(decodeDuckDuckGoUrl(href));
@@ -207,10 +207,127 @@ export function titleFromListingUrl(url = "") {
   }
 }
 
-async function fetchSearchHtml(url, { fetchImpl = fetch, headers = DEFAULT_HEADERS } = {}) {
+async function fetchDirect(url, { fetchImpl = fetch, headers = DEFAULT_HEADERS } = {}) {
   const response = await fetchImpl(url, { headers, redirect: "follow" });
+  if (!response.ok) return { status: response.status, text: "" };
+  return { status: response.status, text: await response.text() };
+}
+
+function looksBlockedOrEmpty(text, status) {
+  if (status === 202 || status === 403 || status === 429) return true;
+  if (!text) return true;
+  if (/anomaly|captcha/i.test(text) && !text.includes("result__a") && !text.includes("result-link") && !text.includes("<item>")) {
+    return true;
+  }
+  return false;
+}
+
+function hasListingSignal(text) {
+  return /bizbuysell\.com\/(?:business-opportunity|business-for-sale)|loopnet\.com\/Listing|bizquest\.com\/business-for-sale|crexi\.com\/properties/i.test(
+    text
+  );
+}
+
+function isUsableSearchPayload(text) {
+  if (!text) return false;
+  return (
+    hasListingSignal(text) ||
+    text.includes("result__a") ||
+    text.includes("result-link") ||
+    parseGenericListingText(text).length > 0
+  );
+}
+
+function shouldUseDirect(href, text, status) {
+  if (looksBlockedOrEmpty(text, status)) return false;
+  if (hasListingSignal(text) || text.includes("result__a") || text.includes("result-link")) return true;
+  // Bing often returns a 200 results page with no marketplace listings. Do not
+  // spend reader quota on that; DuckDuckGo-via-reader is the LoopNet path.
+  if (/bing\.com/i.test(href) && (text.includes("b_algo") || text.includes("<item>"))) return true;
+  return false;
+}
+
+function proxyFetchOptions(headers) {
+  const options = { headers, redirect: "follow" };
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    options.signal = AbortSignal.timeout(20000);
+  }
+  return options;
+}
+
+async function fetchViaJina(url, { fetchImpl = fetch, headers = DEFAULT_HEADERS } = {}) {
+  const target = `https://r.jina.ai/${url}`;
+  const response = await fetchImpl(target, {
+    ...proxyFetchOptions({
+      ...headers,
+      Accept: "text/html,text/plain,*/*",
+      "X-Return-Format": "html",
+    }),
+  });
   if (!response.ok) return "";
   return response.text();
+}
+
+async function fetchViaAllOrigins(url, { fetchImpl = fetch, headers = DEFAULT_HEADERS } = {}) {
+  const target = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+  const response = await fetchImpl(target, proxyFetchOptions(headers));
+  if (!response.ok) return "";
+  return response.text();
+}
+
+export function parseGenericListingText(text) {
+  if (!text) return [];
+  const results = [];
+  const seen = new Set();
+  const re =
+    /https?:\/\/(?:www\.)?(?:bizbuysell|loopnet|bizquest|crexi)\.com\/[^\s"'<>\]]+/gi;
+  for (const match of text.matchAll(re)) {
+    const raw = match[0].replace(/[),.;]+$/, "");
+    const listing = asListing(raw, "", "");
+    if (!listing || seen.has(listing.url)) continue;
+    seen.add(listing.url);
+    results.push(listing);
+  }
+  return results;
+}
+
+function parseSearchPayload(text) {
+  const parsed = [
+    ...parseDuckDuckGoHtml(text),
+    ...parseBingHtml(text),
+    ...parseBingRss(text),
+    ...parseGenericListingText(text),
+  ];
+  const seen = new Set();
+  const out = [];
+  for (const item of parsed) {
+    if (seen.has(item.url)) continue;
+    seen.add(item.url);
+    out.push(item);
+  }
+  return out;
+}
+
+async function fetchSearchHtml(url, options = {}) {
+  const href = String(url);
+  const direct = await fetchDirect(href, options);
+  if (shouldUseDirect(href, direct.text, direct.status)) {
+    return direct.text;
+  }
+  if (options.disableProxy) return direct.text || "";
+  try {
+    const jina = await fetchViaJina(href, options);
+    if (isUsableSearchPayload(jina)) return jina;
+  } catch {
+    // try the next proxy
+  }
+  try {
+    const origin = await fetchViaAllOrigins(href, options);
+    if (isUsableSearchPayload(origin)) return origin;
+  } catch {
+    // fall through
+  }
+  return direct.text || "";
 }
 
 export async function searchDuckDuckGo(query, options = {}) {
@@ -219,7 +336,7 @@ export async function searchDuckDuckGo(query, options = {}) {
     "https://duckduckgo.com/html/",
     "https://lite.duckduckgo.com/lite/",
   ];
-  const offsets = [0, 20, 50];
+  const offsets = [0, 20];
   for (const endpoint of endpoints) {
     const found = [];
     const seen = new Set();
@@ -230,9 +347,10 @@ export async function searchDuckDuckGo(query, options = {}) {
         if (offset) target.searchParams.set("s", String(offset));
         const html = await fetchSearchHtml(target, options);
         const parsed = parseDuckDuckGoHtml(html);
-        if (!parsed.length) break;
+        const listings = parsed.length ? parsed : parseSearchPayload(html);
+        if (!listings.length) break;
         let added = 0;
-        for (const result of parsed) {
+        for (const result of listings) {
           if (seen.has(result.url)) continue;
           seen.add(result.url);
           found.push(result);
@@ -253,7 +371,8 @@ export async function searchBing(query, options = {}) {
   target.searchParams.set("q", query);
   try {
     const html = await fetchSearchHtml(target, options);
-    return parseBingHtml(html);
+    const parsed = parseBingHtml(html);
+    return parsed.length ? parsed : parseSearchPayload(html);
   } catch {
     return [];
   }
@@ -265,7 +384,9 @@ export async function searchBingRss(query, options = {}) {
   target.searchParams.set("format", "rss");
   try {
     const xml = await fetchSearchHtml(target, options);
-    return parseBingRss(xml);
+    const parsed = parseBingRss(xml);
+    if (parsed.length) return parsed;
+    return parseGenericListingText(xml);
   } catch {
     return [];
   }

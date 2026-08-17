@@ -120,4 +120,58 @@ describe("scan finds new listings instead of blackholing short snippets", () => 
     assert.equal(summary.dealsUnqualified, 1);
     assert.equal(listDeals(db).length, 1);
   });
+
+  it("Scan now pulls BizBuySell and LoopNet through Jina when DuckDuckGo is blocked", async () => {
+    const html = `<!DOCTYPE html><html><body>
+<div class="result__body">
+  <a class="result__a" href="https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-included-some-seller-financing/2418402/">Italian Restaurant, Real Estate Included, Some Seller Financing</a>
+  <a class="result__snippet">Lake County, FL. Real estate included. Some seller financing.</a>
+</div>
+<div class="result__body">
+  <a class="result__a" href="https://www.loopnet.com/Listing/400-N-Ervay-Dallas-TX/39588558/">Dallas Multifamily Seller Financing</a>
+  <a class="result__snippet">This multifamily property offers seller financing.</a>
+</div>
+<div class="result__body">
+  <a class="result__a" href="https://www.loopnet.com/Listing/Vacant-Pad-Anniston-AL/24425485/">Anniston potential site owner financing</a>
+  <a class="result__snippet">Vacant land potential site. Owner financing available.</a>
+</div>
+</body></html>`;
+    const fetchImpl = (input) => {
+      const url = String(input);
+      if (url.includes("r.jina.ai") && url.includes("duckduckgo")) {
+        return Promise.resolve({ ok: true, status: 200, text: async () => html });
+      }
+      if (url.includes("duckduckgo")) {
+        return Promise.resolve({ ok: true, status: 202, text: async () => "anomaly" });
+      }
+      if (url.includes("bing.com")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: async () => "<html><body><ol><li class=\"b_algo\"><h2><a href=\"https://www.dictionary.com/browse/owner\">owner</a></h2></li></ol></body></html>",
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, text: async () => "<rss></rss>" });
+    };
+    const summary = await runScan(db, {
+      queries: [
+        'site:bizbuysell.com "seller financing" "real estate included"',
+        'site:loopnet.com/Listing "seller financing"',
+      ],
+      fetchImpl,
+      delayMs: 0,
+      maxResults: 10,
+      requireBoth: true,
+    });
+    assert.ok(summary.urlsFound >= 3, `expected marketplace URLs, got ${summary.urlsFound}`);
+    assert.equal(summary.dealsAdded, 2);
+    assert.equal(summary.dealsUnqualified, 1);
+    const deals = listDeals(db);
+    assert.ok(deals.some((deal) => deal.url.includes("bizbuysell.com")));
+    assert.ok(deals.some((deal) => deal.url.includes("39588558")));
+    assert.equal(
+      deals.some((deal) => deal.url.includes("24425485")),
+      false
+    );
+  });
 });

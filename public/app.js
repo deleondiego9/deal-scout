@@ -158,7 +158,7 @@ async function refresh() {
 scanBtn.addEventListener("click", async () => {
   scanBtn.disabled = true;
   scanNotice = null;
-  scanStatus.textContent = "Scanning public listing search results…";
+  scanStatus.textContent = "Scanning BizBuySell and LoopNet…";
   try {
     const result = await api("api/scan", { method: "POST", body: "{}" });
     const s = result.summary || {};

@@ -3,7 +3,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseBingHtml, parseBingRss, parseDuckDuckGoHtml, parseDuckDuckGoLite, titleFromListingUrl } from "../src/search.js";
+import {
+  collectListingResults,
+  parseBingHtml,
+  parseBingRss,
+  parseDuckDuckGoHtml,
+  parseDuckDuckGoLite,
+  parseGenericListingText,
+  searchBing,
+  searchDuckDuckGo,
+  titleFromListingUrl,
+} from "../src/search.js";
 import { extractFromSearchResult } from "../src/extract.js";
 import { isListingUrl } from "../src/urls.js";
 
@@ -85,5 +95,74 @@ describe("search parsing", () => {
       ),
       /Italian Restaurant/i
     );
+  });
+
+  it("extracts marketplace URLs from reader markdown when HTML parse is empty", () => {
+    const markdown = `
+Title: LoopNet listing
+
+[Retail Plaza Seller Financing](https://www.loopnet.com/Listing/123-Main-St-Dallas-TX/39992803/)
+https://www.bizbuysell.com/business-opportunity/car-wash-real-estate-included-seller-financing/2473314/
+`;
+    const results = parseGenericListingText(markdown);
+    assert.equal(results.length, 2);
+    assert.ok(results.some((item) => item.url.includes("loopnet.com/Listing")));
+    assert.ok(results.some((item) => item.url.includes("bizbuysell.com/business-opportunity")));
+  });
+
+  it("retries DuckDuckGo through Jina when the direct HTML is blocked", async () => {
+    const fetchImpl = async (input) => {
+      const href = String(input);
+      if (href.includes("r.jina.ai")) {
+        return { ok: true, status: 200, text: async () => fixture };
+      }
+      if (href.includes("allorigins")) {
+        throw new Error("allorigins should not run after Jina succeeds");
+      }
+      return { ok: true, status: 202, text: async () => "anomaly" };
+    };
+    const results = await searchDuckDuckGo('site:bizbuysell.com "seller financing"', {
+      fetchImpl,
+    });
+    assert.ok(results.length >= 4);
+    assert.ok(results.every((item) => isListingUrl(item.url)));
+    assert.ok(results[0].url.includes("bizbuysell.com/business-opportunity/"));
+  });
+
+  it("parses LoopNet URLs from Jina markdown when DuckDuckGo returns 202", async () => {
+    const markdown = `[Seller financed multifamily](https://www.loopnet.com/Listing/400-N-Ervay-Dallas-TX/39588558/)
+[Owner financed retail](https://www.loopnet.com/Listing/Retail-Woodstock-GA/39993021/)
+https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-included-some-seller-financing/2418402/`;
+    const fetchImpl = async (input) => {
+      const href = String(input);
+      if (href.includes("r.jina.ai") && href.includes("duckduckgo")) {
+        return { ok: true, status: 200, text: async () => markdown };
+      }
+      return { ok: true, status: 202, text: async () => "anomaly captcha" };
+    };
+    const results = await collectListingResults(
+      ['site:loopnet.com/Listing "seller financing"', 'site:bizbuysell.com "seller financing"'],
+      { fetchImpl, searchDelayMs: 0 }
+    );
+    assert.ok(results.some((item) => item.url.includes("39588558")));
+    assert.ok(results.some((item) => item.url.includes("bizbuysell.com/business-opportunity")));
+  });
+
+  it("does not proxy Bing HTML that already rendered result cards", async () => {
+    const junk = `<html><body><ol>
+<li class="b_algo"><h2><a href="https://www.dictionary.com/browse/owner">owner</a></h2><p>definition</p></li>
+</ol></body></html>`;
+    const fetchImpl = async (input) => {
+      const href = String(input);
+      if (href.includes("r.jina.ai") || href.includes("allorigins")) {
+        throw new Error(`unexpected proxy for ${href}`);
+      }
+      if (href.includes("bing.com")) {
+        return { ok: true, status: 200, text: async () => junk };
+      }
+      return { ok: true, status: 202, text: async () => "anomaly" };
+    };
+    const results = await searchBing('site:loopnet.com "seller financing"', { fetchImpl });
+    assert.equal(results.length, 0);
   });
 });

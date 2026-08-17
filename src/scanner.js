@@ -142,7 +142,7 @@ export async function runScan(db, options = {}) {
   try {
     const listings = await collectListingResults(queries, {
       fetchImpl,
-      searchDelayMs: Math.min(delayMs || 0, 800),
+      searchDelayMs: delayMs ? Math.min(delayMs, 400) : 0,
     });
     summary.urlsFound = listings.length;
 

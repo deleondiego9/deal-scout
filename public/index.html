@@ -26,7 +26,7 @@
         <p class="eyebrow">Businesses for sale</p>
         <h1>Deal Scout</h1>
         <p class="lede">
-          Only BizBuySell and LoopNet listings that include real estate <em>and</em> seller financing. Vacant land and development sites are skipped.
+          Scanning public Bing, DuckDuckGo, and LoopNet results. If a search engine blocks this server, Scan now retries through a reader so phone taps see the same sets as harvest.
         </p>
       </div>
       <div class="actions">
@@ -61,7 +61,7 @@
     <section class="help">
       <h2>How this runs</h2>
       <ol>
-        <li>Scan searches public Bing and DuckDuckGo results. It cannot open BizBuySell’s or LoopNet’s directories (those sites block the server). Most owner-financed ads are financing-only and would not qualify anyway.</li>
+        <li>Scan now searches BizBuySell and LoopNet. If DuckDuckGo blocks the server IP, it retries through a reader so you still get both marketplaces — not only the handful Bing allows from this host.</li>
         <li>A listing is kept only when it offers seller financing <em>and</em> includes real estate — a building or operating business, not vacant land or a development site. LoopNet <code>/Listing/</code> pages count as real estate when they are an improved property with seller/owner financing.</li>
         <li>Search engines only index a thin slice of listing pages, so Scan often returns the same handful. Listings already in your list are skipped. A GitHub Action can search from a different IP and import matches.</li>
         <li>Schedule <code>npm run scan</code> on your VPS, or use the GitHub Action once this app is deployed.</li>
