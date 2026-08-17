@@ -234,7 +234,7 @@ export function upsertDeal(db, input) {
       excerpt,
       sellerFinancing ? 1 : 0,
       realEstateIncluded ? 1 : 0,
-      sellerFinancing && realEstateIncluded ? 1 : 0,
+      sellerFinancing && realEstateIncluded && !input.landDeal ? 1 : 0,
       Math.max(existing.score || 0, input.score ?? 0),
       JSON.stringify(financingEvidence),
       JSON.stringify(realEstateEvidence),

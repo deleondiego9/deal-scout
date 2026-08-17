@@ -76,6 +76,17 @@ describe("database dedupe", () => {
     );
   });
 
+  it("does not qualify a land-only listing on upsert", () => {
+    const url = "https://www.loopnet.com/Listing/214-Raffel-Rd-Woodstock-IL/35100018/";
+    const first = ingestDeal(db, {
+      url,
+      title: "8.7 Acre Development Site 0% Owner Financing",
+      description: "8.67 Acres of Commercial Land Offered at $399,000. Owner financing.",
+    });
+    assert.equal(first.deal.qualified, false);
+    assert.equal(first.deal.sellerFinancing, true);
+  });
+
   it("stores notes and called without losing them on a later scan upsert", () => {
     const payload = {
       canonicalUrl: "https://www.bizbuysell.com/business-opportunity/notes-test/2550001",
