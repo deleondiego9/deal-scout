@@ -5,12 +5,6 @@ const scanBtn = document.querySelector("#scan-btn");
 const scanStatus = document.querySelector("#scan-status");
 const searchEl = document.querySelector("#search");
 const exampleEl = document.querySelector("#ingest-example");
-const apiKeyEl = document.querySelector("#api-key");
-
-apiKeyEl.value = localStorage.getItem("dealScoutApiKey") || "";
-apiKeyEl.addEventListener("input", () => {
-  localStorage.setItem("dealScoutApiKey", apiKeyEl.value.trim());
-});
 
 let statusFilter = "new";
 let query = "";
@@ -32,8 +26,6 @@ function money(amount, fallback) {
 
 async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-  const key = apiKeyEl.value.trim();
-  if (key) headers["X-API-Key"] = key;
   const response = await fetch(path, {
     ...options,
     headers,
@@ -187,10 +179,7 @@ scanBtn.addEventListener("click", async () => {
   } catch (error) {
     const message = error.message || "Scan failed";
     scanNotice = null;
-    scanStatus.textContent =
-      message.includes("API key")
-        ? "Paste the API key above, then tap Scan now."
-        : message;
+    scanStatus.textContent = message;
   } finally {
     scanBtn.disabled = false;
   }
