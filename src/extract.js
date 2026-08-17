@@ -61,7 +61,7 @@ export function extractFromHtml(html, url) {
   );
 
   const visible = `${title || ""}\n${description || ""}\n${$("body").text().slice(0, 4000)}`;
-  const flags = classify(visible);
+  const flags = withMarketplaceDefaults(url, classify(visible));
   const priceAmount = parsePrice(priceText || visible);
 
   return {
@@ -77,6 +77,38 @@ export function extractFromHtml(html, url) {
   };
 }
 
+export function isPropertyMarketplaceListing(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^(www|m)\./, "").toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    if (host === "loopnet.com" && path.includes("/listing/")) return true;
+    if (host === "crexi.com" && path.includes("/properties/")) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export function withMarketplaceDefaults(url, flags) {
+  if (!isPropertyMarketplaceListing(url)) return flags;
+  if (flags.negativeEvidence?.length) return flags;
+  const already = Boolean(flags.realEstateIncluded);
+  const realEstateIncluded = true;
+  const realEstateEvidence = already
+    ? flags.realEstateEvidence
+    : [...(flags.realEstateEvidence || []), "commercial property listing"];
+  let score = flags.score || 0;
+  if (!already) score += 50;
+  return {
+    ...flags,
+    realEstateIncluded,
+    realEstateEvidence,
+    qualified: Boolean(flags.sellerFinancing && realEstateIncluded),
+    score,
+  };
+}
+
 export function listingTextFromSearch({ url, title, snippet } = {}) {
   let slug = "";
   try {
@@ -89,7 +121,7 @@ export function listingTextFromSearch({ url, title, snippet } = {}) {
 
 export function extractFromSearchResult({ url, title, snippet }) {
   const combined = listingTextFromSearch({ url, title, snippet });
-  const flags = classify(combined);
+  const flags = withMarketplaceDefaults(url, classify(combined));
   return {
     url,
     source: sourceFromUrl(url),

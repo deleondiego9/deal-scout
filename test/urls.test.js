@@ -49,12 +49,24 @@ describe("urls", () => {
       false
     );
     assert.equal(isListingUrl("https://example.com/business-opportunity/123456/"), false);
+    assert.equal(
+      isListingUrl("https://www.loopnet.com/Listing/5436-S-Broadway-Los-Angeles-CA/39992803/"),
+      true
+    );
+    assert.equal(
+      isListingUrl("https://www.loopnet.com/cre-explained/finance/understanding-owner-financed-real-estate-deals/"),
+      false
+    );
   });
 
   it("labels known sources", () => {
     assert.equal(
       sourceFromUrl("https://www.bizbuysell.com/business-opportunity/x/1"),
       "BizBuySell"
+    );
+    assert.equal(
+      sourceFromUrl("https://www.loopnet.com/Listing/5436-S-Broadway-Los-Angeles-CA/39992803/"),
+      "LoopNet"
     );
   });
 

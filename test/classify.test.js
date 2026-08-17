@@ -59,6 +59,31 @@ describe("classify uses listing URL slugs", () => {
     assert.equal(extracted.sellerFinancing, true);
     assert.equal(extracted.realEstateIncluded, true);
   });
+
+  it("treats LoopNet /Listing/ pages as real estate when seller financing is offered", async () => {
+    const { extractFromSearchResult } = await import("../src/extract.js");
+    const extracted = extractFromSearchResult({
+      url: "https://www.loopnet.com/Listing/5436-S-Broadway-Los-Angeles-CA/39992803/",
+      title: "5436 S Broadway, Los Angeles, CA 90037 - SELLER FINANCING",
+      snippet: "BELOW MARKET SELLER FINANCING AT ONLY 4% FIXED INTEREST ONLY!!! This Retail property is available for sale.",
+    });
+    assert.equal(extracted.source, "LoopNet");
+    assert.equal(extracted.sellerFinancing, true);
+    assert.equal(extracted.realEstateIncluded, true);
+    assert.equal(extracted.qualified, true);
+  });
+
+  it("does not assume real estate for LoopNet business-opportunity ads", async () => {
+    const { extractFromSearchResult } = await import("../src/extract.js");
+    const extracted = extractFromSearchResult({
+      url: "https://www.loopnet.com/biz/business-opportunity/cabinet-sales-assembly-and-distribution-1-3rd-seller-financing/2174360",
+      title: "Scalable Stretch & Recovery Franchise",
+      snippet: "Seller financing available. Low-cost franchise in a growth market.",
+    });
+    assert.equal(extracted.sellerFinancing, true);
+    assert.equal(extracted.realEstateIncluded, false);
+    assert.equal(extracted.qualified, false);
+  });
 });
 
 describe("parsePrice", () => {

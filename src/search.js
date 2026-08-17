@@ -17,6 +17,10 @@ export const DEFAULT_QUERIES = [
   'site:bizbuysell.com/business-opportunity "seller financing"',
   'site:bizbuysell.com/business-opportunity "owner financing"',
   'site:bizquest.com "seller financing" "real estate included"',
+  'site:loopnet.com/Listing "seller financing"',
+  'site:loopnet.com/Listing "owner financing"',
+  'site:loopnet.com "seller financing"',
+  'site:loopnet.com "owner financing"',
   '"business for sale" "seller financing" "real estate included"',
 ];
 
@@ -182,7 +186,16 @@ function nicerTitle(title, url) {
 export function titleFromListingUrl(url = "") {
   try {
     const path = decodeURIComponent(new URL(canonicalizeUrl(url)).pathname);
-    const slug = path.split("/").filter(Boolean).find((part) => !/^\d+$/.test(part) && part !== "business-opportunity" && part !== "business-for-sale");
+    const slug = path
+      .split("/")
+      .filter(Boolean)
+      .find(
+        (part) =>
+          !/^\d+$/.test(part) &&
+          !["business-opportunity", "business-for-sale", "listing", "properties", "biz"].includes(
+            part.toLowerCase()
+          )
+      );
     if (!slug) return "";
     return slug
       .replace(/[-_]+/g, " ")

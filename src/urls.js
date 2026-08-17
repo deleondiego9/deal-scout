@@ -17,6 +17,7 @@ const SKIP_PATH_PARTS = [
   "/search",
   "/businesses-for-sale/",
   "/owner-financed-businesses-for-sale",
+  "/cre-explained",
 ];
 
 export function decodeEntities(value = "") {

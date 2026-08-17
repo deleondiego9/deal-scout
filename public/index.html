@@ -26,7 +26,7 @@
         <p class="eyebrow">Businesses for sale</p>
         <h1>Deal Scout</h1>
         <p class="lede">
-          Only listings that include real estate <em>and</em> offer seller financing. BizBuySell’s owner-financed directory has hundreds of ads; most do not include real estate, and that site blocks this server. Scan uses public search results, then keeps the overlap.
+          Only listings that include real estate <em>and</em> offer seller financing. Searches BizBuySell and LoopNet via public search — not those sites’ full catalogs.
         </p>
       </div>
       <div class="actions">
@@ -61,8 +61,8 @@
     <section class="help">
       <h2>How this runs</h2>
       <ol>
-        <li>Scan searches public Bing and DuckDuckGo results. It cannot open BizBuySell’s 1,500+ owner-financed directory (that site blocks the server). Most of those ads are financing-only and would not qualify anyway.</li>
-        <li>A listing is kept only when the search title, snippet, or URL says <em>both</em> seller financing and real estate included. Pages that mention just one are counted as “didn’t qualify,” not as new deals.</li>
+        <li>Scan searches public Bing and DuckDuckGo results. It cannot open BizBuySell’s or LoopNet’s directories (those sites block the server). Most owner-financed ads are financing-only and would not qualify anyway.</li>
+        <li>A listing is kept only when the search title, snippet, or URL says seller financing <em>and</em> real estate is included. LoopNet <code>/Listing/</code> pages are the property itself, so those count as real estate included when they offer seller/owner financing.</li>
         <li>Search engines only index a thin slice of listing pages, so Scan often returns the same handful. Listings already in your list are skipped. A GitHub Action can search from a different IP and import matches.</li>
         <li>Schedule <code>npm run scan</code> on your VPS, or use the GitHub Action once this app is deployed.</li>
         <li>Add notes on a listing and mark it <strong>Called</strong> after you talk to the seller.</li>

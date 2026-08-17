@@ -1,6 +1,6 @@
 # Deal Scout
 
-Web app that finds **businesses for sale with real estate included and seller financing**, stores each listing once, and shows them in a simple board.
+Web app that finds **businesses for sale with real estate included and seller financing** (plus LoopNet commercial listings that offer seller/owner financing), stores each listing once, and shows them in a simple board.
 
 It does **not** replace a VPS. GitHub holds the code. This app (on your laptop or VPS) holds the deals.
 
