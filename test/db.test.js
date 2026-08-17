@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal, hasSeen, recordSkip, getDeal } from "../src/db.js";
+import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal, hasSeen, recordSkip, getDeal, startScan, latestScan } from "../src/db.js";
 import { ingestDeal } from "../src/scanner.js";
 
 let dir;
@@ -197,5 +197,15 @@ describe("database dedupe", () => {
     assert.equal(updated.notes, "hello");
     assert.equal(updated.called, true);
     migrated.close();
+  });
+
+  it("closes scans left running after a restart", () => {
+    startScan(db);
+    assert.equal(latestScan(db).finishedAt, null);
+    db.close();
+    db = openDb(join(dir, "deals.sqlite"));
+    const last = latestScan(db);
+    assert.ok(last.finishedAt);
+    assert.equal(last.error, "interrupted");
   });
 });

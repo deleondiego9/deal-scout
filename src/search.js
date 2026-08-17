@@ -230,11 +230,17 @@ function hasListingSignal(text) {
 
 function isUsableSearchPayload(text) {
   if (!text) return false;
+  return looksLikeSearchResults(text) || parseGenericListingText(text).length > 0;
+}
+
+function looksLikeSearchResults(text) {
+  if (!text) return false;
   return (
     hasListingSignal(text) ||
     text.includes("result__a") ||
     text.includes("result-link") ||
-    parseGenericListingText(text).length > 0
+    text.includes("b_algo") ||
+    text.includes("<item>")
   );
 }
 
@@ -250,7 +256,7 @@ function shouldUseDirect(href, text, status) {
 function proxyFetchOptions(headers) {
   const options = { headers, redirect: "follow" };
   if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
-    options.signal = AbortSignal.timeout(20000);
+    options.signal = AbortSignal.timeout(8000);
   }
   return options;
 }
@@ -321,11 +327,13 @@ async function fetchSearchHtml(url, options = {}) {
   } catch {
     // try the next proxy
   }
-  try {
-    const origin = await fetchViaAllOrigins(href, options);
-    if (isUsableSearchPayload(origin)) return origin;
-  } catch {
-    // fall through
+  if (options.useAllOrigins) {
+    try {
+      const origin = await fetchViaAllOrigins(href, options);
+      if (isUsableSearchPayload(origin)) return origin;
+    } catch {
+      // fall through
+    }
   }
   return direct.text || "";
 }
@@ -333,19 +341,20 @@ async function fetchSearchHtml(url, options = {}) {
 export async function searchDuckDuckGo(query, options = {}) {
   const endpoints = [
     "https://html.duckduckgo.com/html/",
-    "https://duckduckgo.com/html/",
     "https://lite.duckduckgo.com/lite/",
   ];
   const offsets = [0];
   for (const endpoint of endpoints) {
     const found = [];
     const seen = new Set();
+    let gotSearchPage = false;
     for (const offset of offsets) {
       try {
         const target = new URL(endpoint);
         target.searchParams.set("q", query);
         if (offset) target.searchParams.set("s", String(offset));
         const html = await fetchSearchHtml(target, options);
+        gotSearchPage = looksLikeSearchResults(html);
         const parsed = parseDuckDuckGoHtml(html);
         const listings = parsed.length ? parsed : parseSearchPayload(html);
         if (!listings.length) break;
@@ -362,6 +371,7 @@ export async function searchDuckDuckGo(query, options = {}) {
       }
     }
     if (found.length) return found;
+    if (gotSearchPage) return [];
   }
   return [];
 }

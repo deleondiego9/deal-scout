@@ -68,6 +68,7 @@ export function openDb(filePath) {
   migrateDealsTable(db);
   migrateListingKeys(db);
   migrateScansTable(db);
+  closeAbandonedScans(db);
   db.exec("CREATE INDEX IF NOT EXISTS idx_deals_called ON deals(called)");
   return db;
 }
@@ -367,6 +368,12 @@ export function stats(db) {
 export function startScan(db) {
   const result = db.prepare("INSERT INTO scans (started_at) VALUES (?)").run(nowIso());
   return result.lastInsertRowid;
+}
+
+export function closeAbandonedScans(db, at = nowIso()) {
+  db.prepare(
+    `UPDATE scans SET finished_at = ?, error = COALESCE(NULLIF(error, ''), 'interrupted') WHERE finished_at IS NULL`
+  ).run(at);
 }
 
 export function finishScan(db, id, summary) {

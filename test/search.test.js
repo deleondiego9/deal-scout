@@ -165,4 +165,22 @@ https://www.bizbuysell.com/business-opportunity/italian-restaurant-real-estate-i
     const results = await searchBing('site:loopnet.com "seller financing"', { fetchImpl });
     assert.equal(results.length, 0);
   });
+
+  it("does not wait on allorigins after Jina returns an empty DuckDuckGo page", async () => {
+    const emptyDdg = `<html><body>
+      <div class="result__body"><a class="result__a" href="https://example.com/x">Unrelated</a></div>
+    </body></html>`;
+    const fetchImpl = async (input) => {
+      const href = String(input);
+      if (href.includes("allorigins") || href.includes("lite.duckduckgo")) {
+        throw new Error(`unexpected extra fetch ${href}`);
+      }
+      if (href.includes("r.jina.ai")) {
+        return { ok: true, status: 200, text: async () => emptyDdg };
+      }
+      return { ok: true, status: 202, text: async () => "anomaly" };
+    };
+    const results = await searchDuckDuckGo('site:bizquest.com "seller financing"', { fetchImpl });
+    assert.equal(results.length, 0);
+  });
 });

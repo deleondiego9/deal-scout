@@ -28,7 +28,7 @@ export function config() {
     host: process.env.HOST || "0.0.0.0",
     dataDir: process.env.DATA_DIR || "./data",
     apiKey: process.env.API_KEY || "",
-    scanDelayMs: Number(process.env.SCAN_DELAY_MS || 400),
+    scanDelayMs: Number(process.env.SCAN_DELAY_MS || 200),
     scanMaxResults: Number(process.env.SCAN_MAX_RESULTS || 80),
     scanRequireBoth: process.env.SCAN_REQUIRE_BOTH !== "0",
   };
