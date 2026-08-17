@@ -146,7 +146,9 @@ async function refresh() {
   const params = new URLSearchParams();
   if (statusFilter) params.set("status", statusFilter);
   if (query) params.set("q", query);
-  params.set("qualified", "1");
+  if (statusFilter && statusFilter !== "dismissed" && statusFilter !== "all") {
+    params.set("qualified", "1");
+  }
   const [{ deals }, statsPayload] = await Promise.all([
     api(`api/deals?${params}`),
     api("api/stats"),

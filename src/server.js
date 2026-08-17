@@ -32,6 +32,14 @@ export function createApp(db, options = {}) {
         if (filePath.endsWith("manifest.json")) {
           res.setHeader("Content-Type", "application/manifest+json");
         }
+        if (
+          filePath.endsWith(".html") ||
+          filePath.endsWith(".js") ||
+          filePath.endsWith(".css") ||
+          filePath.endsWith("sw.js")
+        ) {
+          res.setHeader("Cache-Control", "no-cache");
+        }
       },
     })
   );

@@ -82,6 +82,16 @@ describe("http api", () => {
     assert.match(icon.headers.get("content-type") || "", /image\/png/);
     const sw = await fetch(`${base}/sw.js`);
     assert.equal(sw.status, 200);
+    assert.match(sw.headers.get("cache-control") || "", /no-cache/);
+  });
+
+  it("serves the board without an API key box", async () => {
+    const res = await fetch(`${base}/`);
+    const html = await res.text();
+    assert.equal(res.status, 200);
+    assert.equal(html.includes('id="api-key"'), false);
+    assert.match(html, /Scan now/);
+    assert.match(res.headers.get("cache-control") || "", /no-cache/);
   });
 
   it("rejects ingest without an API key", async () => {
