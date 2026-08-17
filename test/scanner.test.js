@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDb, listDeals } from "../src/db.js";
-import { runScan } from "../src/scanner.js";
+import { ingestSearchListings, runScan, takeBalancedListings } from "../src/scanner.js";
 
 const rssFixture = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "bing-rss.xml"),
@@ -173,5 +173,37 @@ describe("scan finds new listings instead of blackholing short snippets", () => 
       deals.some((deal) => deal.url.includes("24425485")),
       false
     );
+  });
+
+  it("keeps BizBuySell and LoopNet when the result cap is smaller than the search set", () => {
+    const listings = [];
+    for (let i = 0; i < 20; i += 1) {
+      listings.push({
+        url: `https://www.bizbuysell.com/business-opportunity/shop-real-estate-included-seller-financing/${2418400 + i}/`,
+        title: `Shop Real Estate Included Seller Financing ${i}`,
+        snippet: "Real estate included. Seller financing. Dallas, TX.",
+      });
+    }
+    for (let i = 0; i < 20; i += 1) {
+      listings.push({
+        url: `https://www.loopnet.com/Listing/Retail-Dallas-TX/${39992800 + i}/`,
+        title: `Dallas Retail Seller Financing ${i}`,
+        snippet: "This retail property offers seller financing.",
+      });
+    }
+    const mixed = takeBalancedListings(listings, 8);
+    assert.equal(mixed.length, 8);
+    assert.equal(mixed.filter((item) => item.url.includes("bizbuysell.com")).length, 4);
+    assert.equal(mixed.filter((item) => item.url.includes("loopnet.com")).length, 4);
+
+    const summary = ingestSearchListings(db, listings, {
+      requireBoth: true,
+      maxResults: 8,
+    });
+    assert.equal(summary.urlsFound, 40);
+    assert.equal(summary.dealsAdded, 8);
+    const deals = listDeals(db);
+    assert.equal(deals.some((deal) => deal.url.includes("bizbuysell.com")), true);
+    assert.equal(deals.some((deal) => deal.url.includes("loopnet.com")), true);
   });
 });

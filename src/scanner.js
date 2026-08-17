@@ -1,6 +1,6 @@
 import { extractFromHtml, extractFromSearchResult } from "./extract.js";
 import { collectListingResults, DEFAULT_QUERIES } from "./search.js";
-import { canonicalizeUrl, listingFingerprint, listingKey } from "./urls.js";
+import { canonicalizeUrl, listingFingerprint, listingKey, sourceFromUrl } from "./urls.js";
 import {
   finishScan,
   findDealByFingerprint,
@@ -27,6 +27,33 @@ function existingDeal(db, canonicalUrl, key, fingerprint) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function takeBalancedListings(listings, maxResults) {
+  const items = Array.isArray(listings) ? listings.filter((item) => item?.url) : [];
+  if (!maxResults || items.length <= maxResults) return items;
+  const buckets = new Map();
+  for (const item of items) {
+    const source = sourceFromUrl(item.url) || "Web";
+    if (!buckets.has(source)) buckets.set(source, []);
+    buckets.get(source).push(item);
+  }
+  const out = [];
+  const sources = [...buckets.keys()];
+  let index = 0;
+  while (out.length < maxResults) {
+    let added = false;
+    for (const source of sources) {
+      const next = buckets.get(source)[index];
+      if (!next) continue;
+      out.push(next);
+      added = true;
+      if (out.length >= maxResults) break;
+    }
+    if (!added) break;
+    index += 1;
+  }
+  return out;
 }
 
 async function enrichFromListing(result, { fetchImpl, headers }) {
@@ -64,7 +91,7 @@ export function ingestSearchListings(db, listings, options = {}) {
     added: [],
   };
 
-  const sliced = listings.slice(0, maxResults);
+  const sliced = takeBalancedListings(listings, maxResults);
   for (const result of sliced) {
     if (!result?.url) {
       summary.dealsUnqualified += 1;
@@ -147,7 +174,7 @@ export async function runScan(db, options = {}) {
     summary.urlsFound = listings.length;
 
     if (enrich) {
-      const sliced = listings.slice(0, maxResults);
+      const sliced = takeBalancedListings(listings, maxResults);
       for (const result of sliced) {
         const canonicalUrl = canonicalizeUrl(result.url);
         const key = listingKey(canonicalUrl);
