@@ -262,6 +262,15 @@ export function ingestDeal(db, payload) {
   );
   if (payload.score !== undefined) merged.score = payload.score;
 
+  const key = listingKey(canonicalUrl);
+  const fingerprint = listingFingerprint(merged.title, merged.location, merged.priceAmount);
+  if (
+    !existingDeal(db, canonicalUrl, key, fingerprint) &&
+    hasSeen(db, canonicalUrl, { listingKey: key, fingerprint })
+  ) {
+    return { inserted: false, repeated: true, deal: null };
+  }
+
   return upsertDeal(db, merged);
 }
 

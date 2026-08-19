@@ -258,6 +258,22 @@ describe("http api", () => {
     assert.equal(cleared.body.deleted, true);
     const gone = await req("/api/deals?status=dismissed");
     assert.equal(gone.body.deals.some((deal) => deal.id === id), false);
+
+    const again = await req("/api/deals", {
+      method: "POST",
+      headers: { "X-API-Key": "test-key" },
+      body: JSON.stringify({
+        url: cleared.body.deal.url,
+        title: "Shop Real Estate Included Seller Financing",
+        description: "Real estate included. Seller financing.",
+      }),
+    });
+    assert.equal(again.body.inserted, false);
+    const listed = await req("/api/deals?status=all");
+    assert.equal(
+      listed.body.deals.some((deal) => deal.url === cleared.body.deal.url),
+      false
+    );
   });
 
   it("clears all dismissed deals in one request", async () => {
