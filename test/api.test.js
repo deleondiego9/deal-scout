@@ -91,7 +91,14 @@ describe("http api", () => {
     assert.equal(res.status, 200);
     assert.equal(html.includes('id="api-key"'), false);
     assert.match(html, /Scan now/);
+    assert.match(html, /id="clear-dismissed"/);
     assert.match(res.headers.get("cache-control") || "", /no-cache/);
+    const js = await fetch(`${base}/app.js`);
+    const appJs = await js.text();
+    assert.match(appJs, /JSON\.stringify\(\{ notes:/);
+    assert.match(appJs, /data-save-notes/);
+    assert.match(appJs, /data-clear/);
+    assert.equal(appJs.includes("filterForDeal"), false);
   });
 
   it("rejects ingest without an API key", async () => {
@@ -174,13 +181,20 @@ describe("http api", () => {
     const stillNew = await req("/api/deals?status=new");
     assert.ok(stillNew.body.deals.some((deal) => deal.id === id));
 
+    const strayDismiss = await req(`/api/deals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: "still new", status: "dismissed" }),
+    });
+    assert.equal(strayDismiss.body.deal.status, "new");
+    assert.equal(strayDismiss.body.deal.notes, "still new");
+
     const called = await req(`/api/deals/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ called: true }),
     });
     assert.equal(called.body.deal.called, true);
     assert.ok(called.body.deal.calledAt);
-    assert.equal(called.body.deal.notes, "Left voicemail with broker Jane");
+    assert.equal(called.body.deal.notes, "still new");
 
     const listed = await req("/api/deals?status=called");
     assert.ok(listed.body.deals.some((deal) => deal.id === id));
@@ -207,5 +221,56 @@ describe("http api", () => {
     assert.equal(result.status, 200);
     assert.equal(result.body.summary.dealsAdded, 1);
     assert.ok(listDeals(db).some((deal) => deal.url.includes("2528518")));
+  });
+
+  it("dismisses a deal until it is cleared, and notes do not dismiss it", async () => {
+    const deals = await req("/api/deals?status=new");
+    const id = deals.body.deals.find((deal) => deal.status === "new").id;
+    const dismissed = await req(`/api/deals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "dismissed" }),
+    });
+    assert.equal(dismissed.body.deal.status, "dismissed");
+    const parked = await req("/api/deals?status=dismissed");
+    assert.ok(parked.body.deals.some((deal) => deal.id === id));
+
+    const noted = await req(`/api/deals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: "still parked" }),
+    });
+    assert.equal(noted.body.deal.status, "dismissed");
+    assert.equal(noted.body.deal.notes, "still parked");
+    const stillParked = await req("/api/deals?status=dismissed");
+    assert.ok(stillParked.body.deals.some((deal) => deal.id === id));
+
+    const restored = await req(`/api/deals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "new" }),
+    });
+    assert.equal(restored.body.deal.status, "new");
+    await req(`/api/deals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "dismissed" }),
+    });
+
+    const cleared = await req(`/api/deals/${id}`, { method: "DELETE" });
+    assert.equal(cleared.status, 200);
+    assert.equal(cleared.body.deleted, true);
+    const gone = await req("/api/deals?status=dismissed");
+    assert.equal(gone.body.deals.some((deal) => deal.id === id), false);
+  });
+
+  it("clears all dismissed deals in one request", async () => {
+    const deals = await req("/api/deals?status=all");
+    const id = deals.body.deals.find((deal) => deal.status !== "dismissed").id;
+    await req(`/api/deals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "dismissed" }),
+    });
+    const result = await req("/api/deals/dismissed", { method: "DELETE" });
+    assert.equal(result.status, 200);
+    assert.ok(result.body.deleted >= 1);
+    const parked = await req("/api/deals?status=dismissed");
+    assert.equal(parked.body.deals.length, 0);
   });
 });

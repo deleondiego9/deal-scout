@@ -9,6 +9,8 @@ import {
   listDeals,
   stats,
   updateDeal,
+  deleteDeal,
+  clearDismissedDeals,
 } from "./db.js";
 import { ingestDeal, importScan, runScan } from "./scanner.js";
 import { canonicalizeUrl } from "./urls.js";
@@ -92,15 +94,29 @@ export function createApp(db, options = {}) {
     try {
       const body = req.body || {};
       const patch = {};
-      if (Object.hasOwn(body, "status")) patch.status = body.status;
-      if (Object.hasOwn(body, "notes")) patch.notes = body.notes;
-      if (Object.hasOwn(body, "called")) patch.called = body.called;
+      if (Object.hasOwn(body, "notes") && !Object.hasOwn(body, "called")) {
+        patch.notes = body.notes;
+      } else {
+        if (Object.hasOwn(body, "status")) patch.status = body.status;
+        if (Object.hasOwn(body, "notes")) patch.notes = body.notes;
+        if (Object.hasOwn(body, "called")) patch.called = body.called;
+      }
       const deal = updateDeal(db, Number(req.params.id), patch);
       if (!deal) return res.status(404).json({ error: "Not found" });
       res.json({ deal });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
+  });
+
+  app.delete("/api/deals/dismissed", (_req, res) => {
+    res.json(clearDismissedDeals(db));
+  });
+
+  app.delete("/api/deals/:id", (req, res) => {
+    const deal = deleteDeal(db, Number(req.params.id));
+    if (!deal) return res.status(404).json({ error: "Not found" });
+    res.json({ deleted: true, deal });
   });
 
   app.post("/api/deals", requireKey, (req, res) => {

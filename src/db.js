@@ -346,6 +346,28 @@ export function updateDealStatus(db, id, status) {
   return updateDeal(db, id, { status });
 }
 
+export function deleteDeal(db, id) {
+  const existing = getDeal(db, id);
+  if (!existing) return null;
+  markSeen(db, {
+    canonicalUrl: existing.url,
+    fingerprint: existing.fingerprint,
+    listingKey: existing.listingKey,
+    status: "cleared",
+  });
+  db.prepare("DELETE FROM deals WHERE id = ?").run(id);
+  return existing;
+}
+
+export function clearDismissedDeals(db) {
+  const rows = listDeals(db, { status: "dismissed" });
+  let deleted = 0;
+  for (const deal of rows) {
+    if (deleteDeal(db, deal.id)) deleted += 1;
+  }
+  return { deleted };
+}
+
 export function stats(db) {
   const row = db.prepare(`
     SELECT

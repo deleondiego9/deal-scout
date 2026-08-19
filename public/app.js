@@ -5,6 +5,7 @@ const scanBtn = document.querySelector("#scan-btn");
 const scanStatus = document.querySelector("#scan-status");
 const searchEl = document.querySelector("#search");
 const exampleEl = document.querySelector("#ingest-example");
+const clearDismissedBtn = document.querySelector("#clear-dismissed");
 
 let statusFilter = "new";
 let query = "";
@@ -85,20 +86,16 @@ function emptyMessage() {
   if (statusFilter === "new") {
     return "No unreviewed deals. Run a scan, or everything is saved, called, or dismissed.";
   }
+  if (statusFilter === "dismissed") {
+    return "No dismissed listings. Dismiss a deal to park it here until you clear it.";
+  }
   return "No deals in this view.";
-}
-
-function filterForDeal(deal) {
-  if (!deal) return statusFilter;
-  if (deal.called) return "called";
-  if (deal.status === "saved") return "saved";
-  if (deal.status === "dismissed") return "dismissed";
-  return "new";
 }
 
 function setFilter(next) {
   statusFilter = next;
   document.querySelectorAll(".chip").forEach((el) => el.classList.toggle("active", el.dataset.status === next));
+  clearDismissedBtn.classList.toggle("hidden", next !== "dismissed");
 }
 
 function renderDeals(deals, lastScan) {
@@ -122,12 +119,19 @@ function renderDeals(deals, lastScan) {
       <label class="key-label">Notes
         <textarea class="notes" data-notes-id="${deal.id}" placeholder="Who you spoke with, asking price, follow-up…">${escapeHtml(deal.notes || "")}</textarea>
       </label>
+      <div class="notes-actions">
+        <button type="button" data-id="${deal.id}" data-save-notes="1">Save notes</button>
+      </div>
       <div class="row">
         <a href="${deal.url}" target="_blank" rel="noreferrer">Open listing</a>
-        <button type="button" data-id="${deal.id}" data-save-notes="1">Save notes</button>
         <button type="button" data-id="${deal.id}" data-called="${deal.called ? "0" : "1"}">${deal.called ? "Unmark called" : "Mark called"}</button>
-        <button type="button" data-id="${deal.id}" data-status="saved">Keep</button>
-        <button type="button" data-id="${deal.id}" data-status="dismissed">Dismiss</button>
+        ${
+          deal.status === "dismissed"
+            ? `<button type="button" data-id="${deal.id}" data-status="new">Restore</button>
+        <button type="button" class="danger" data-id="${deal.id}" data-clear="1">Clear</button>`
+            : `<button type="button" data-id="${deal.id}" data-status="saved">Keep</button>
+        <button type="button" class="danger" data-id="${deal.id}" data-status="dismissed">Dismiss</button>`
+        }
       </div>
     `;
     dealsEl.appendChild(card);
@@ -205,22 +209,57 @@ searchEl.addEventListener("input", () => {
 
 dealsEl.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-id]");
-  if (!button) return;
+  if (!button || button.disabled) return;
+  event.preventDefault();
+  event.stopPropagation();
   const id = button.dataset.id;
-  const body = {};
-  if (button.dataset.status) body.status = button.dataset.status;
-  if (button.dataset.called !== undefined) body.called = button.dataset.called === "1";
-  if (button.dataset.saveNotes) {
-    const notes = button.closest("article")?.querySelector(`[data-notes-id="${id}"]`);
-    body.notes = notes ? notes.value : "";
+  button.disabled = true;
+  try {
+    if (button.hasAttribute("data-save-notes")) {
+      const notes = button.closest("article")?.querySelector(`[data-notes-id="${id}"]`);
+      await api(`api/deals/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ notes: notes ? notes.value : "" }),
+      });
+      scanNotice = "Notes saved. Listing stayed in this tab.";
+    } else if (button.hasAttribute("data-clear")) {
+      await api(`api/deals/${id}`, { method: "DELETE" });
+      scanNotice = "Listing cleared.";
+    } else if (button.hasAttribute("data-called")) {
+      await api(`api/deals/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ called: button.dataset.called === "1" }),
+      });
+    } else if (button.hasAttribute("data-status")) {
+      const status = button.dataset.status;
+      await api(`api/deals/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      if (status === "dismissed") scanNotice = "Parked in Dismissed. Clear it there when you want it gone.";
+      if (status === "saved") scanNotice = "Moved to Saved.";
+      if (status === "new") scanNotice = "Restored to New.";
+    } else {
+      return;
+    }
+    await refresh();
+  } catch (error) {
+    button.disabled = false;
+    scanStatus.textContent = error.message;
   }
-  const result = await api(`api/deals/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
-  if (button.dataset.saveNotes) scanNotice = "Notes saved.";
-  setFilter(filterForDeal(result.deal));
-  await refresh();
+});
+
+clearDismissedBtn.addEventListener("click", async () => {
+  if (!window.confirm("Remove all dismissed listings from this app? They will not come back on Scan now.")) {
+    return;
+  }
+  try {
+    const result = await api("api/deals/dismissed", { method: "DELETE" });
+    scanNotice = `Cleared ${result.deleted || 0} dismissed listings.`;
+    await refresh();
+  } catch (error) {
+    scanStatus.textContent = error.message;
+  }
 });
 
 refresh().catch((error) => {

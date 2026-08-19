@@ -47,6 +47,7 @@
         <button class="chip" data-status="dismissed">Dismissed</button>
         <button class="chip" data-status="all">All</button>
       </div>
+      <button id="clear-dismissed" type="button" class="clear-dismissed hidden">Clear dismissed</button>
     </section>
 
     <main id="deals" class="grid"></main>
@@ -61,7 +62,7 @@
         <li>A listing is kept only when it offers seller financing <em>and</em> includes real estate — a building or operating business, not vacant land or a development site. LoopNet <code>/Listing/</code> pages count as real estate when they are an improved property with seller/owner financing.</li>
         <li>Search engines only index a thin slice of listing pages, so Scan often returns the same handful. Listings already in your list are skipped. A GitHub Action can search from a different IP and import matches.</li>
         <li>Schedule <code>npm run scan</code> on your VPS, or use the GitHub Action once this app is deployed.</li>
-        <li>Add notes on a listing and tap <strong>Save notes</strong> — it stays in New. <strong>Keep</strong> files it for later. Mark it <strong>Called</strong> after you talk to the seller.</li>
+        <li>Add notes and tap <strong>Save notes</strong> — that only saves the note; it never dismisses the listing. <strong>Keep</strong> files it for later. <strong>Dismiss</strong> parks it on the Dismissed tab until you tap <strong>Clear</strong> or <strong>Clear dismissed</strong>.</li>
       </ol>
       <pre id="ingest-example"></pre>
     </section>

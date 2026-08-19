@@ -6,6 +6,7 @@ import {
   findDealByFingerprint,
   findDealByListingKey,
   findDealByUrl,
+  hasSeen,
   recordSkip,
   startScan,
   upsertDeal,
@@ -105,7 +106,7 @@ export function ingestSearchListings(db, listings, options = {}) {
       continue;
     }
     const key = listingKey(canonicalUrl);
-    if (existingDeal(db, canonicalUrl, key)) {
+    if (existingDeal(db, canonicalUrl, key) || hasSeen(db, canonicalUrl, { listingKey: key })) {
       recordSkip(db, { canonicalUrl, listingKey: key });
       summary.dealsSkipped += 1;
       continue;
@@ -178,7 +179,7 @@ export async function runScan(db, options = {}) {
       for (const result of sliced) {
         const canonicalUrl = canonicalizeUrl(result.url);
         const key = listingKey(canonicalUrl);
-        if (existingDeal(db, canonicalUrl, key)) {
+        if (existingDeal(db, canonicalUrl, key) || hasSeen(db, canonicalUrl, { listingKey: key })) {
           recordSkip(db, { canonicalUrl, listingKey: key });
           summary.dealsSkipped += 1;
           continue;

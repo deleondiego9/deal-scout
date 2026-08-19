@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal, hasSeen, recordSkip, getDeal, startScan, latestScan, finishScan } from "../src/db.js";
-import { ingestDeal } from "../src/scanner.js";
+import { openDb, upsertDeal, findDealByUrl, listDeals, updateDeal, hasSeen, recordSkip, getDeal, startScan, latestScan, finishScan, deleteDeal, clearDismissedDeals } from "../src/db.js";
+import { ingestDeal, ingestSearchListings } from "../src/scanner.js";
 
 let dir;
 let db;
@@ -233,5 +233,65 @@ describe("database dedupe", () => {
     assert.equal(getDeal(db, created.deal.id).notes, "Call back Thursday");
     assert.ok(fresh.some((deal) => deal.id === created.deal.id));
     assert.ok(listedNew.some((deal) => deal.id === created.deal.id));
+  });
+
+  it("keeps dismissed deals until they are cleared, then skips them on ingest", () => {
+    const created = upsertDeal(db, {
+      canonicalUrl: "https://www.bizbuysell.com/business-opportunity/clear-me/2550100",
+      title: "Shop Real Estate Included Seller Financing",
+      location: "Boise, ID",
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+      score: 100,
+    });
+    updateDeal(db, created.deal.id, { status: "dismissed" });
+    assert.equal(listDeals(db, { status: "dismissed" }).length, 1);
+    const stillThere = ingestSearchListings(db, [
+      {
+        url: created.deal.url,
+        title: created.deal.title,
+        snippet: "Real estate included. Seller financing.",
+      },
+    ]);
+    assert.equal(stillThere.dealsAdded, 0);
+    assert.equal(getDeal(db, created.deal.id).status, "dismissed");
+    assert.equal(listDeals(db, { status: "dismissed" }).length, 1);
+    deleteDeal(db, created.deal.id);
+    assert.equal(listDeals(db, { status: "dismissed" }).length, 0);
+    assert.equal(hasSeen(db, created.deal.url, { listingKey: created.deal.listingKey }), true);
+    const ingested = ingestSearchListings(db, [
+      {
+        url: created.deal.url,
+        title: created.deal.title,
+        snippet: "Real estate included. Seller financing.",
+      },
+    ]);
+    assert.equal(ingested.dealsAdded, 0);
+    assert.ok(ingested.dealsSkipped >= 1);
+    assert.equal(listDeals(db, { status: "all" }).length, 0);
+  });
+
+  it("clears every dismissed deal at once", () => {
+    const first = upsertDeal(db, {
+      canonicalUrl: "https://www.loopnet.com/Listing/Clear-One/39992801",
+      title: "Retail Seller Financing",
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+      score: 100,
+    });
+    const second = upsertDeal(db, {
+      canonicalUrl: "https://www.loopnet.com/Listing/Clear-Two/39992802",
+      title: "Office Owner Financing",
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+      score: 100,
+    });
+    updateDeal(db, first.deal.id, { status: "dismissed" });
+    updateDeal(db, second.deal.id, { status: "dismissed" });
+    assert.equal(clearDismissedDeals(db).deleted, 2);
+    assert.equal(listDeals(db, { status: "dismissed" }).length, 0);
   });
 });
