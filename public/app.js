@@ -51,6 +51,13 @@ function scanSummaryText(last) {
   return `Last scan ${when}: ${added} new · ${skipped} already in your list · ${unqualified} didn’t mention both`;
 }
 
+function daysOnMarketFlag(deal) {
+  if (deal.daysOnMarket == null) return "";
+  if (deal.daysOnMarket === 0) return `<span class="flag">Listed today</span>`;
+  const unit = deal.daysOnMarket === 1 ? "day" : "days";
+  return `<span class="flag">${deal.daysOnMarket} ${unit} on market</span>`;
+}
+
 function seenBadge(deal, lastScan) {
   if (deal.status !== "new" || !lastScan?.startedAt) return "";
   const scanStart = Date.parse(lastScan.startedAt);
@@ -111,6 +118,7 @@ function renderDeals(deals, lastScan) {
       <div class="price">${money(deal.priceAmount, deal.priceText)}</div>
       <div class="flags">
         ${seenBadge(deal, lastScan)}
+        ${daysOnMarketFlag(deal)}
         ${deal.sellerFinancing ? `<span class="flag">Seller financing</span>` : ""}
         ${deal.realEstateIncluded ? `<span class="flag">Real estate included</span>` : ""}
         ${deal.called ? `<span class="flag called">Called${deal.calledAt ? " · " + new Date(deal.calledAt).toLocaleDateString() : ""}</span>` : ""}

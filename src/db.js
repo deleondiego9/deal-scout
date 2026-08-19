@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { listingFingerprint, listingKey } from "./urls.js";
+import { daysOnMarket, earlierListedAt, listedAtFromInput, parseListedAt } from "./listed.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -35,6 +36,7 @@ export function openDb(filePath) {
       notes TEXT,
       called INTEGER NOT NULL DEFAULT 0,
       called_at TEXT,
+      listed_at TEXT,
       origin TEXT NOT NULL DEFAULT 'scan',
       first_seen_at TEXT NOT NULL,
       last_seen_at TEXT NOT NULL
@@ -77,6 +79,19 @@ function tableColumns(db, table) {
   return new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((col) => col.name));
 }
 
+function backfillListedAt(db) {
+  const rows = db
+    .prepare(
+      "SELECT id, title, description, excerpt FROM deals WHERE listed_at IS NULL OR listed_at = ''"
+    )
+    .all();
+  const update = db.prepare("UPDATE deals SET listed_at = ? WHERE id = ?");
+  for (const row of rows) {
+    const listedAt = parseListedAt([row.title, row.description, row.excerpt].filter(Boolean).join("\n"));
+    if (listedAt) update.run(listedAt, row.id);
+  }
+}
+
 function migrateDealsTable(db) {
   const cols = tableColumns(db, "deals");
   const add = (name, ddl) => {
@@ -85,6 +100,8 @@ function migrateDealsTable(db) {
   add("notes", "notes TEXT");
   add("called", "called INTEGER NOT NULL DEFAULT 0");
   add("called_at", "called_at TEXT");
+  add("listed_at", "listed_at TEXT");
+  backfillListedAt(db);
 }
 
 function migrateScansTable(db) {
@@ -139,6 +156,8 @@ function rowToDeal(row) {
     notes: row.notes || "",
     called: Boolean(row.called),
     calledAt: row.called_at,
+    listedAt: row.listed_at || null,
+    daysOnMarket: daysOnMarket(row.listed_at),
     origin: row.origin,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
@@ -194,6 +213,8 @@ export function upsertDeal(db, input) {
     status: existing ? "skipped" : "added",
   });
 
+  const incomingListedAt = listedAtFromInput(input);
+
   if (existing) {
     const sellerFinancing = Boolean(existing.sellerFinancing || input.sellerFinancing);
     const realEstateIncluded = Boolean(existing.realEstateIncluded || input.realEstateIncluded);
@@ -201,6 +222,7 @@ export function upsertDeal(db, input) {
       input.title && input.title.length > (existing.title || "").length ? input.title : existing.title;
     const description = existing.description || input.description || null;
     const excerpt = existing.excerpt || input.excerpt || null;
+    const listedAt = earlierListedAt(existing.listedAt, incomingListedAt);
     const financingEvidence = [
       ...new Set([...(existing.financingEvidence || []), ...(input.financingEvidence || [])]),
     ];
@@ -222,7 +244,8 @@ export function upsertDeal(db, input) {
         qualified = ?,
         score = ?,
         financing_evidence = ?,
-        real_estate_evidence = ?
+        real_estate_evidence = ?,
+        listed_at = COALESCE(?, listed_at)
       WHERE id = ?`
     ).run(
       now,
@@ -239,6 +262,7 @@ export function upsertDeal(db, input) {
       Math.max(existing.score || 0, input.score ?? 0),
       JSON.stringify(financingEvidence),
       JSON.stringify(realEstateEvidence),
+      listedAt,
       existing.id
     );
     return { inserted: false, repeated: true, deal: getDeal(db, existing.id) };
@@ -248,8 +272,8 @@ export function upsertDeal(db, input) {
     `INSERT INTO deals (
       canonical_url, fingerprint, listing_key, source, title, price_text, price_amount, location,
       description, excerpt, seller_financing, real_estate_included, qualified, score,
-      financing_evidence, real_estate_evidence, status, origin, first_seen_at, last_seen_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)`
+      financing_evidence, real_estate_evidence, status, origin, first_seen_at, last_seen_at, listed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)`
   ).run(
     input.canonicalUrl,
     fingerprint,
@@ -269,7 +293,8 @@ export function upsertDeal(db, input) {
     JSON.stringify(input.realEstateEvidence || []),
     input.origin || "scan",
     now,
-    now
+    now,
+    incomingListedAt
   );
 
   return {

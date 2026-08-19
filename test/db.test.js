@@ -112,6 +112,34 @@ describe("database dedupe", () => {
     assert.equal(listDeals(db, { status: "new" }).length, 0);
   });
 
+  it("stores listed dates and keeps the earlier days-on-market value", () => {
+    const created = upsertDeal(db, {
+      canonicalUrl: "https://www.loopnet.com/Listing/Dom-Test/39994001",
+      title: "Retail Seller Financing Real Estate",
+      description: "Listed on March 1, 2026. Seller financing. Real estate included.",
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+      score: 100,
+    });
+    assert.ok(created.deal.listedAt);
+    assert.equal(created.deal.listedAt.startsWith("2026-03-01"), true);
+    assert.ok(created.deal.daysOnMarket >= 160);
+    const again = upsertDeal(db, {
+      canonicalUrl: "https://www.loopnet.com/Listing/Dom-Test/39994001",
+      title: "Retail Seller Financing Real Estate",
+      description: "Listed on June 1, 2026. Seller financing. Real estate included.",
+      sellerFinancing: true,
+      realEstateIncluded: true,
+      qualified: true,
+    });
+    assert.equal(again.deal.listedAt.startsWith("2026-03-01"), true);
+    const notes = updateDeal(db, created.deal.id, { notes: "DOM stays" });
+    assert.equal(notes.notes, "DOM stays");
+    assert.equal(notes.status, "new");
+    assert.equal(notes.listedAt.startsWith("2026-03-01"), true);
+  });
+
   it("dedupes the same marketplace listing ID even when the URL slug changes", () => {
     const first = upsertDeal(db, {
       canonicalUrl: "https://www.bizbuysell.com/business-opportunity/established-car-wash/2512479",
@@ -196,6 +224,8 @@ describe("database dedupe", () => {
     const updated = updateDeal(migrated, deal.id, { notes: "hello", called: true });
     assert.equal(updated.notes, "hello");
     assert.equal(updated.called, true);
+    assert.equal(deal.listedAt, null);
+    assert.equal(deal.daysOnMarket, null);
     migrated.close();
   });
 

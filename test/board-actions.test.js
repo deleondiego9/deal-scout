@@ -88,6 +88,8 @@ describe("board actions affected by notes, dismiss, and clear", () => {
     assert.match(appJs, /hasAttribute\("data-called"\)[\s\S]*?JSON\.stringify\(\{ called:/);
     assert.match(appJs, /hasAttribute\("data-status"\)[\s\S]*?JSON\.stringify\(\{ status \}\)/);
 
+    assert.match(appJs, /daysOnMarket/);
+    assert.match(appJs, /on market/);
     const css = await (await fetch(`${base}/styles.css`)).text();
     assert.match(css, /\.notes-actions/);
     assert.match(css, /\.clear-dismissed/);
@@ -260,6 +262,28 @@ describe("board actions affected by notes, dismiss, and clear", () => {
     assert.ok(stats.body.stats.new >= 1);
     assert.ok(stats.body.stats.saved >= 1);
     assert.equal(stats.body.stats.called, 0);
+  });
+
+  it("exposes days on market on the deal payload used by cards", async () => {
+    const withDom = await req("/api/deals", {
+      method: "POST",
+      headers: { "X-API-Key": "test-key" },
+      body: JSON.stringify({
+        url: "https://www.bizbuysell.com/business-opportunity/dom-card-live/9000888/",
+        title: "Laundry Seller Financing Real Estate",
+        description: "Listed on May 1, 2026. Seller financing available. Real estate included.",
+        location: "Rome, GA",
+      }),
+    });
+    assert.equal(withDom.status, 201);
+    assert.ok(withDom.body.deal.daysOnMarket >= 100);
+    assert.ok(withDom.body.deal.listedAt.startsWith("2026-05-01"));
+    const savedNotes = await req(`/api/deals/${withDom.body.deal.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: "check DOM" }),
+    });
+    assert.equal(savedNotes.body.deal.status, "new");
+    assert.ok(savedNotes.body.deal.daysOnMarket >= 100);
   });
 
   it("board source files stay cache-busted", async () => {

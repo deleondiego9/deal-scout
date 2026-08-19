@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { classify, parseLocation, parsePrice } from "./classify.js";
+import { earlierListedAt, listedAtFromInput, parseDateToIso, parseListedAt } from "./listed.js";
 import { decodeEntities, sourceFromUrl } from "./urls.js";
 
 function jsonLdBlocks(html) {
@@ -63,6 +64,14 @@ export function extractFromHtml(html, url) {
   const visible = `${title || ""}\n${description || ""}\n${$("body").text().slice(0, 4000)}`;
   const flags = withMarketplaceDefaults(url, classify(visible));
   const priceAmount = parsePrice(priceText || visible);
+  const listedAt = [
+    parseDateToIso(offer?.datePosted),
+    parseDateToIso(product?.datePosted),
+    parseDateToIso(product?.datePublished),
+    parseDateToIso(offer?.availabilityStarts),
+    parseListedAt(visible),
+    listedAtFromInput({ title, description, html }),
+  ].reduce((best, next) => earlierListedAt(best, next), null);
 
   return {
     url,
@@ -73,6 +82,7 @@ export function extractFromHtml(html, url) {
     location: location || parseLocation(visible),
     description: description || null,
     excerpt: (description || visible).replace(/\s+/g, " ").trim().slice(0, 500),
+    listedAt,
     ...flags,
   };
 }
@@ -132,6 +142,7 @@ export function extractFromSearchResult({ url, title, snippet }) {
     location: parseLocation(combined),
     description: decodeEntities(snippet || "").replace(/\s+/g, " ").trim() || null,
     excerpt: decodeEntities(snippet || "").replace(/\s+/g, " ").trim().slice(0, 500),
+    listedAt: listedAtFromInput({ title, snippet }),
     ...flags,
   };
 }

@@ -125,6 +125,29 @@ describe("http api", () => {
     assert.equal(result.body.deal.qualified, true);
   });
 
+  it("stores days on market from listing text without changing status", async () => {
+    const result = await req("/api/deals", {
+      method: "POST",
+      headers: { "X-API-Key": "test-key" },
+      body: JSON.stringify({
+        url: "https://www.loopnet.com/Listing/Dom-Card-Test/39994002/",
+        title: "Office Seller Financing Real Estate",
+        description: "Seller financing available. Real estate included. 21 days on market.",
+        location: "Savannah, GA",
+      }),
+    });
+    assert.equal(result.status, 201);
+    assert.equal(result.body.deal.status, "new");
+    assert.ok(result.body.deal.daysOnMarket >= 20 && result.body.deal.daysOnMarket <= 22);
+    const noted = await req(`/api/deals/${result.body.deal.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes: "DOM note" }),
+    });
+    assert.equal(noted.body.deal.status, "new");
+    assert.equal(noted.body.deal.notes, "DOM note");
+    assert.ok(noted.body.deal.daysOnMarket >= 20);
+  });
+
   it("does not duplicate the same ingested URL", async () => {
     const result = await req("/api/deals", {
       method: "POST",
